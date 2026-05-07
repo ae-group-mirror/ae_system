@@ -113,7 +113,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.1'
+__version__ = '0.3.2'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file

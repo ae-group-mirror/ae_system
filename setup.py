@@ -50,6 +50,7 @@ setup_kwargs = {
     },
     'install_requires': [
         'ae_base',
+        'ae_app_log',
     ],
     'keywords': [
         'configuration',
@@ -75,7 +76,7 @@ setup_kwargs = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_system',
-    'version': '0.3.1',
+    'version': '0.3.2',
     'zip_safe': True,
 }
 
