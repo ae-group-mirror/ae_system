@@ -44,7 +44,6 @@ functions to aid in application setup, configuration, and build introspection.
 * :func:`build_config_variable_values`: reads variable values from an APP_BUILD_CFG_FILENAME/`buildozer.spec` file.
 * :func:`instantiate_config_parser`: returns a `ConfigParser` instance pre-configured for case-sensitive keys and
   extended interpolation.
-* :func:`namespace_guess`: determines and returns the optional namespace name of a python package.
 * :func:`project_main_file`: determines the absolute path to the main module file of a project package (where the
   `__version__` of the app|package is defined).
 * :func:`main_file_paths_parts`: returns a tuple of possible main/version file path names combinations of any project.
@@ -113,7 +112,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
