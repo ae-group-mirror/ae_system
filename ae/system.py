@@ -76,6 +76,7 @@ system constants and classes
 * :data:`DOTENV_FILENAME`: default name for environment variable files (.env).
 * :data:`DOTENV_LINE_MATCHER`: compiled regular expression to parse a line of an OS environment file.
 * :data:`DOTENV_VAR_IN_VAL_MATCHER`: compiled regular expression to parse the value of an OS env variable.
+* :data:`PYPI_PACKAGE_NAMES`: irregular project/package names, not convertable from their import names.
 * :data:`SKIPPED_MODULES`: a tuple of module names to be ignored by stack inspection functions.
 
 an instance of the class :class:`PyMo` is representing a Python module/package, and provides:
@@ -112,7 +113,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.3'
+__version__ = '0.3.4'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -145,6 +146,29 @@ DOTENV_VAR_IN_VAL_MATCHER = re.compile(r"""
 
 MODULE_NAME_SEPS = ('_', '.', '-')                      #: separators considered equivalent for comparison (:pep:`503`)
 MODULE_NAME_PATTERN = re.compile("[" + "".join(MODULE_NAME_SEPS) + "]+")  # escape hyphen/'\-' if not first/last chr
+
+PYPI_PACKAGE_NAMES = {
+    'PIL': 'Pillow',
+    'bs4': 'beautifulsoup4',
+    'crypto': 'pycryptodome',
+    'dateutil': 'python-dateutil',
+    'dns': 'dnspython',
+    'dotenv': 'python-dotenv',
+    'fitz': 'PyMuPDF',
+    'github': 'PyGithub',
+    'gitlab': 'python-gitlab',
+    'googleapiclient': 'google-api-python-client',
+    'jwt': 'PyJWT',
+    'magic': 'python-magic',
+    'paho': 'paho-mqtt',
+    # deprecated: 'pkg_resources': 'setuptools',
+    'serial': 'pyserial',
+    'sklearn': 'scikit-learn',
+    'telegram': 'python-telegram-bot',
+    'usb': 'pyusb',
+    'yaml': 'PyYAML',
+}
+""" irregular project/package names; not convertable from their import names. """
 
 SKIPPED_MODULES = ('ae.base', 'ae.system', 'ae.files', 'ae.paths', 'ae.dynamicod',
                    'ae.core', 'ae.console', 'ae.snell', 'ae.managed_files',
@@ -798,11 +822,14 @@ def sys_env_text(ind_ch: str = " ", ind_len: int = 12, key_ch: str = "=", key_le
 
 class PyMo(ErrorMsgMixin):
     """ helper class to create, represent, inspect, load or import a Python module or package. """
-    def __init__(self, import_name: str, project_path: str = "") -> None:
-        """ create a new instance of the class :class:`PyMp`.
+    def __init__(self, import_name: str, project_path: str = "", **pypi_names: str) -> None:
+        """ create a new instance of the class :class:`PyMo`.
 
         :param import_name:     import name of the module/package/portion.
         :param project_path:    optional project root folder path.
+        :param pypi_names:      irregular pypi project/distribution names; not convertable from their import names
+                                (key_word==import name; value==PyPi distribution/project name). if the import name
+                                contains a dot-character then specify this value as **dict.
         """
         super().__init__()
         if not import_name:
@@ -810,14 +837,18 @@ class PyMo(ErrorMsgMixin):
 
         self.import_name = import_name or 'import.name.error'
         self._project_path = project_path
+        self._pypi_names = PYPI_PACKAGE_NAMES
+        self._pypi_names.update(**pypi_names)
 
     @classmethod
-    def from_name(cls, name: str, namespace_name: str = "", project_path: str = "") -> Self:
-        """ create a :class:`PyMp` instance from the name of a project/package/portion/module.
+    def from_name(cls, name: str, namespace_name: str = "", project_path: str = "", **pypi_names: str) -> Self:
+        """ create a :class:`PyMo` instance from the name of a project/package/portion/module.
 
         :param name:            import/pip/package/project name of the module/package/portion.
         :param namespace_name:  namespace name/path w/ or w/o the module/portion name (at the end).
         :param project_path:    root folder path of the source project.
+        :param pypi_names:      irregular pypi project/distribution names; not convertable from their import names
+                                (key_word==import name; value==PyPi distribution/project name).
         :return:                PyMo instance of the Python module/package/portion. specifying invalid arguments results
                                 in an instance with an :attr:`~PyMo.import_name+` of 'import.name.error'.
         """
@@ -837,11 +868,13 @@ class PyMo(ErrorMsgMixin):
         return cls(import_name, project_path=project_path)
 
     @classmethod
-    def from_path(cls, project_path: str, namespace_name: str = "") -> Self:
-        """ create a :class:`PyMp` instance from the specified project-root folder (source-code) path.
+    def from_path(cls, project_path: str, namespace_name: str = "", **pypi_names: str) -> Self:
+        """ create a :class:`PyMo` instance from the specified project-root folder (source-code) path.
 
         :param project_path:    root folder path of the project source code.
         :param namespace_name:  namespace name/path with or without the module/portion name.
+        :param pypi_names:      irregular pypi project/distribution names; not convertable from their import names
+                                (key_word==import name; value==PyPi distribution/project name).
         :return:                PyMo instance of the Python module/package/portion.
         """
         project_path = norm_path(project_path)
@@ -931,14 +964,17 @@ class PyMo(ErrorMsgMixin):
     @property
     def pip_name(self) -> str:
         """ pip package name of the Python module. """
-        return '-'.join(self.name_parts)
+        return self.project_name.replace('_', '-').lower()
 
     @property
     def portion_name(self) -> str:
         """ name of the Python module """
         return self.name_parts[-1]
 
-    project_name = package_name             #: alias of the :attr:`package_name` property
+    @property
+    def project_name(self) -> str:
+        """ name of the Python distribution/project (could differ from the :attr:`~PyMo.package_name` property). """
+        return PYPI_PACKAGE_NAMES.get(self.import_name, self.package_name)
 
     @property
     def project_root_path(self) -> str:
