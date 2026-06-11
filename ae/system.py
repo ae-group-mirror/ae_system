@@ -113,7 +113,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.4'
+__version__ = '0.3.5'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -865,7 +865,7 @@ class PyMo(ErrorMsgMixin):
         else:
             import_name = name
 
-        return cls(import_name, project_path=project_path)
+        return cls(import_name, project_path=project_path, **pypi_names)
 
     @classmethod
     def from_path(cls, project_path: str, namespace_name: str = "", **pypi_names: str) -> Self:
@@ -895,7 +895,7 @@ class PyMo(ErrorMsgMixin):
                         import_name = name.replace(os_path_sep, '.')
                         break
 
-        return cls(import_name.replace('-', '_'), project_path=project_path)
+        return cls(import_name.replace('-', '_'), project_path=project_path, **pypi_names)
 
     def __repr__(self):
         return f"PyMo('{self.import_name}', '{self._project_path=}')"
