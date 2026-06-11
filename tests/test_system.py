@@ -15,7 +15,7 @@ from tests.conftest import skip_gitlab_ci
 
 from ae.base import (
     DEF_PROJECT_PARENT_FOLDER, PY_EXT, PY_INIT, PY_MAIN, TESTS_FOLDER, UNSET,
-    norm_path, os_path_dirname, os_path_isdir, os_path_join, os_path_sep, write_file, os_path_basename)
+    norm_path, os_path_dirname, os_path_isdir, os_path_join, write_file, os_path_basename)
 
 
 # noinspection PyProtectedMember
@@ -1433,10 +1433,16 @@ class TestPyMo:
 
     def test_pip_name(self):
         mod = PyMo("tst_nam")
-        assert mod.pip_name == "tst_nam"
+        assert mod.pip_name == "tst-nam"
 
         mod = PyMo("tst.nam")
         assert mod.pip_name == "tst-nam"
+
+        mod = PyMo('PIL')
+        assert mod.pip_name == "pillow"
+
+        mod = PyMo("tst.nam", **{"tst.nam": "Irregular-Name"})
+        assert mod.project_name == "Irregular-Name"
 
     def test_portion_name(self):
         mod = PyMo("tst_nam")
@@ -1444,6 +1450,33 @@ class TestPyMo:
 
         mod = PyMo("tst.nam")
         assert mod.portion_name == "nam"
+
+    def test_project_name(self):
+        mod = PyMo("tst_nam")
+        assert mod.project_name == "tst_nam"
+
+        mod = PyMo('PIL')
+        assert mod.project_name == "Pillow"
+
+        mod = PyMo('PIL', **{'PIL': 'PIL'})
+        assert mod.project_name == "PIL"
+
+        mod = PyMo('PIL', PIL='PIL')
+        assert mod.project_name == "PIL"
+
+        mod = PyMo('namespace.mod', **{"namespace.mod": "Irr-Nam-Mod"})
+        assert mod.project_name == "Irr-Nam-Mod"
+
+    def test_pypi_names(self):
+        pypi_names = {'tst.pypi.nam': 'Irr-Name', 'PIP': 'New-Pip'}
+
+        mod = PyMo('tst.pypi.nam', **pypi_names)
+        assert mod.project_name == pypi_names['tst.pypi.nam']
+        assert mod.pip_name == pypi_names['tst.pypi.nam'].lower()
+
+        mod = PyMo('PIP', **pypi_names)
+        assert mod.project_name == pypi_names['PIP']
+        assert mod.pip_name == pypi_names['PIP'].lower()
 
     def test_repr(self):
         mod = PyMo("any_name")
