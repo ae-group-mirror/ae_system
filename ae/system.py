@@ -113,7 +113,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.5'
+__version__ = '0.3.6'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -148,25 +148,58 @@ MODULE_NAME_SEPS = ('_', '.', '-')                      #: separators considered
 MODULE_NAME_PATTERN = re.compile("[" + "".join(MODULE_NAME_SEPS) + "]+")  # escape hyphen/'\-' if not first/last chr
 
 PYPI_PACKAGE_NAMES = {
-    'PIL': 'Pillow',
+    'apt': 'python-apt',
+    'attr': 'attrs',
     'bs4': 'beautifulsoup4',
+    'crontab': 'python-crontab',
+    'Cryptodome': 'pycryptodome',
     'crypto': 'pycryptodome',
+    'cv2': 'opencv-python',
     'dateutil': 'python-dateutil',
     'dns': 'dnspython',
+    'docx': 'python-docx',
     'dotenv': 'python-dotenv',
+    'engineio': 'python-engineio',
+    'ffmpeg': 'ffmpeg-python',
     'fitz': 'PyMuPDF',
+    'gi': 'PyGObject',
+    'git': 'GitPython',
     'github': 'PyGithub',
     'gitlab': 'python-gitlab',
+    'gnupg': 'python-gnupg',
     'googleapiclient': 'google-api-python-client',
+    'google.oauth2': 'google-auth',
+    'gtk': 'PyGTK',
+    'jose': 'python-jose',
     'jwt': 'PyJWT',
     'magic': 'python-magic',
+    'multipart': 'python-multipart',
+    'mysql': 'mysql-connector-python',
+    'nacl': 'PyNaCl',
+    'nmap': 'python-nmap',
+    'odf': 'odfpy',
+    'OpenSSL': 'pyOpenSSL',
     'paho': 'paho-mqtt',
+    'PIL': 'Pillow',
     # deprecated: 'pkg_resources': 'setuptools',
+    'pptx': 'python-pptx',
+    'psycopg2': 'psycopg2-binary',
+    'RPi': 'RPi.GPIO',
     'serial': 'pyserial',
+    'skimage': 'scikit-image',
     'sklearn': 'scikit-learn',
+    'slugify': 'python-slugify',
+    'snappy': 'python-snappy',
+    'socketio': 'python-socketio',
     'telegram': 'python-telegram-bot',
     'usb': 'pyusb',
+    'usb1': 'libusb1',
+    'vlc': 'python-vlc',
+    'win32api': 'pywin32',
+    'win32com': 'pywin32',
+    'wx': 'wxPython',
     'yaml': 'PyYAML',
+    'zmq': 'pyzmq',
 }
 """ irregular project/package names; not convertable from their import names. """
 
@@ -827,7 +860,7 @@ class PyMo(ErrorMsgMixin):
 
         :param import_name:     import name of the module/package/portion.
         :param project_path:    optional project root folder path.
-        :param pypi_names:      irregular pypi project/distribution names; not convertable from their import names
+        :param pypi_names:      irregular PyPI project/distribution names; not convertable from their import names
                                 (key_word==import name; value==PyPi distribution/project name). if the import name
                                 contains a dot-character then specify this value as **dict.
         """
@@ -837,7 +870,7 @@ class PyMo(ErrorMsgMixin):
 
         self.import_name = import_name or 'import.name.error'
         self._project_path = project_path
-        self._pypi_names = PYPI_PACKAGE_NAMES
+        self._pypi_names = PYPI_PACKAGE_NAMES.copy()
         self._pypi_names.update(**pypi_names)
 
     @classmethod
@@ -847,7 +880,7 @@ class PyMo(ErrorMsgMixin):
         :param name:            import/pip/package/project name of the module/package/portion.
         :param namespace_name:  namespace name/path w/ or w/o the module/portion name (at the end).
         :param project_path:    root folder path of the source project.
-        :param pypi_names:      irregular pypi project/distribution names; not convertable from their import names
+        :param pypi_names:      irregular PyPI project/distribution names; not convertable from their import names
                                 (key_word==import name; value==PyPi distribution/project name).
         :return:                PyMo instance of the Python module/package/portion. specifying invalid arguments results
                                 in an instance with an :attr:`~PyMo.import_name+` of 'import.name.error'.
@@ -873,7 +906,7 @@ class PyMo(ErrorMsgMixin):
 
         :param project_path:    root folder path of the project source code.
         :param namespace_name:  namespace name/path with or without the module/portion name.
-        :param pypi_names:      irregular pypi project/distribution names; not convertable from their import names
+        :param pypi_names:      irregular PyPI project/distribution names; not convertable from their import names
                                 (key_word==import name; value==PyPi distribution/project name).
         :return:                PyMo instance of the Python module/package/portion.
         """
@@ -963,7 +996,7 @@ class PyMo(ErrorMsgMixin):
 
     @property
     def pip_name(self) -> str:
-        """ pip package name of the Python module. """
+        """ pip&PyPI package name of the Python module. """
         return self.project_name.replace('_', '-').lower()
 
     @property
@@ -974,7 +1007,7 @@ class PyMo(ErrorMsgMixin):
     @property
     def project_name(self) -> str:
         """ name of the Python distribution/project (could differ from the :attr:`~PyMo.package_name` property). """
-        return PYPI_PACKAGE_NAMES.get(self.import_name, self.package_name)
+        return self._pypi_names.get(self.import_name, self.package_name)
 
     @property
     def project_root_path(self) -> str:

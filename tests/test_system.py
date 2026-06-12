@@ -1464,6 +1464,9 @@ class TestPyMo:
         mod = PyMo('PIL', PIL='PIL')
         assert mod.project_name == "PIL"
 
+        mod = PyMo('PIL')       # test that the default value of PIL did not get overwritten
+        assert mod.project_name == "Pillow"
+
         mod = PyMo('namespace.mod', **{"namespace.mod": "Irr-Nam-Mod"})
         assert mod.project_name == "Irr-Nam-Mod"
 
