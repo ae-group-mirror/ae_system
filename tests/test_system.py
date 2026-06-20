@@ -15,15 +15,15 @@ from tests.conftest import skip_gitlab_ci
 
 from ae.base import (
     DEF_PROJECT_PARENT_FOLDER, PY_EXT, PY_INIT, PY_MAIN, TESTS_FOLDER, UNSET,
-    norm_path, os_path_dirname, os_path_isdir, os_path_join, write_file, os_path_basename)
+    norm_path, os_path_basename, os_path_dirname, os_path_isdir, os_path_join, url_failure, write_file)
 
 
 # noinspection PyProtectedMember
 from ae.system import (
-    APP_BUILD_CFG_FILENAME, DOTENV_FILENAME, DOTENV_VAR_IN_VAL_MATCHER,
+    APP_BUILD_CFG_FILENAME, DOTENV_FILENAME, DOTENV_VAR_IN_VAL_MATCHER, PYPI_PACKAGE_NAMES,
     app_name_guess, build_config_variable_values, full_stack_trace, instantiate_config_parser,
     late_env_var_resolver, load_dotenvs, load_env_var_defaults, main_file_paths_parts,
-    module_attr, module_find, module_load, module_file_path,
+    module_attr, module_find, module_load, module_file_path, norm_pip_name,
     os_host_name, os_local_ip, _os_platform, os_user_name,
     parse_dotenv, project_main_file,
     stack_frames, stack_var, stack_vars, sys_env_dict, sys_env_text,
@@ -71,6 +71,29 @@ def os_env_test_env():
         yield tmp_path
 
         os.environ = old_env
+
+
+@skip_gitlab_ci
+def test_pip_names():
+    pypi_root_url = "https://pypi.org"  # == aedev.base.PYPI_ROOT_URL
+    found_pip_names = set()
+    for imp_name, pip_name in PYPI_PACKAGE_NAMES.items():
+        assert imp_name
+
+        assert pip_name
+        assert not url_failure(f"{pypi_root_url}/project/{pip_name}/")
+        assert pip_name.replace('.', '-').replace('_', '-').lower() == norm_pip_name(pip_name)
+
+        pip_norm_name = norm_pip_name(pip_name)         # normalized pypi.org/project/<name>
+        assert not url_failure(f"{pypi_root_url}/project/{pip_norm_name}")
+
+        # prevent accidentally duplicated pip/pypi-Names (apart from the explicitly excluded extensions)
+        assert (pip_norm_name not in found_pip_names
+                or pip_name == 'pymongo' and imp_name in ('bson', 'gridfs')
+                or pip_name == 'pywin32' and imp_name in ('win32api', 'win32com')
+                or pip_name == 'django-cms' and imp_name in ('cms', 'menus')
+                )
+        found_pip_names.add(pip_norm_name)
 
 
 class TestHelpers:
@@ -146,7 +169,7 @@ class TestHelpers:
             # noinspection PyArgumentList
             load_env_var_defaults()
 
-        with pytest.raises(TypeError):
+        with pytest.raises((AttributeError, TypeError)):
             # noinspection PyTypeChecker
             load_env_var_defaults(None, None)   # STRANGE: raising TypeError in Python 3.9.21/local but not in 3.9.23/CI
             # noinspection PyArgumentList
@@ -158,7 +181,7 @@ class TestHelpers:
     def test_load_env_var_defaults_not_loaded(self):
         env_vars = {}
 
-        load_env_var_defaults('/', env_vars)
+        load_env_var_defaults("/", env_vars)
         assert DOTENV_VAR_NAME not in env_vars
 
         load_env_var_defaults('.', env_vars)
@@ -167,7 +190,7 @@ class TestHelpers:
     def test_load_env_var_defaults_not_loaded_in_os_environ(self, os_env_test_env):
         assert DOTENV_VAR_NAME not in os.environ
 
-        load_env_var_defaults('/', os.environ)
+        load_env_var_defaults("/", os.environ)
         assert DOTENV_VAR_NAME not in os.environ
 
         load_env_var_defaults('.', os.environ)
@@ -276,6 +299,10 @@ class TestHelpers:
         assert (por_name, PY_INIT) in main_file_paths_parts(por_name)
         assert any(por_name in _ for _ in main_file_paths_parts(por_name))
         assert any(por_name + PY_EXT in _ for _ in main_file_paths_parts(por_name))
+
+    def test_norm_pip_name(self):
+        assert norm_pip_name('') == ''
+        assert norm_pip_name('Abc.DEF-gHi_jkL') == 'abc-def-ghi-jkl'
 
     def test_os_host_name(self):
         print(os_host_name())
@@ -1456,7 +1483,7 @@ class TestPyMo:
         assert mod.project_name == "tst_nam"
 
         mod = PyMo('PIL')
-        assert mod.project_name == "Pillow"
+        assert mod.project_name == "pillow"
 
         mod = PyMo('PIL', **{'PIL': 'PIL'})
         assert mod.project_name == "PIL"
@@ -1465,7 +1492,7 @@ class TestPyMo:
         assert mod.project_name == "PIL"
 
         mod = PyMo('PIL')       # test that the default value of PIL did not get overwritten
-        assert mod.project_name == "Pillow"
+        assert mod.project_name == "pillow"
 
         mod = PyMo('namespace.mod', **{"namespace.mod": "Irr-Nam-Mod"})
         assert mod.project_name == "Irr-Nam-Mod"

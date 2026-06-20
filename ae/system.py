@@ -85,6 +85,7 @@ an instance of the class :class:`PyMo` is representing a Python module/package, 
 * project, module, package and portion paths
 * dynamic load of a code module or package
 """
+# pylint: disable=too-many-lines
 import getpass
 import importlib
 import importlib.abc
@@ -108,12 +109,12 @@ from typing import Any, Callable, Container, Generator, MutableMapping, Optional
 from ae.base import (                                               # type: ignore
     PY_EXT, PY_INIT, PY_MAIN, UNSET,
     defuse, dummy_function, env_str, mask_secrets, norm_path,
-    os_path_abspath, os_path_basename, os_path_dirname, os_path_isfile, os_path_join, os_path_sep, os_path_splitext,
+    os_path_abspath, os_path_basename, os_path_dirname, os_path_isfile, os_path_join, os_path_splitext,
     read_file, UnsetType)
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.6'
+__version__ = '0.3.7'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -148,20 +149,37 @@ MODULE_NAME_SEPS = ('_', '.', '-')                      #: separators considered
 MODULE_NAME_PATTERN = re.compile("[" + "".join(MODULE_NAME_SEPS) + "]+")  # escape hyphen/'\-' if not first/last chr
 
 PYPI_PACKAGE_NAMES = {
+    'absl': 'absl-py',
+    'airflow': 'apache-airflow',
+    'allauth': 'django-allauth',
     'apt': 'python-apt',
+    'arango': 'python-arango',
     'attr': 'attrs',
+    'Bio': 'biopython',
+    'bootstrap5': 'django-bootstrap5',
     'bs4': 'beautifulsoup4',
+    'bson': 'pymongo',                                  # pymongo extension
+    'cassandra': 'cassandra-driver',
+    'cms': 'django-cms',
+    'consul': 'python-consul',
+    'corsheaders': 'django-cors-headers',
+    'crispy_forms': 'django-crispy-forms',
     'crontab': 'python-crontab',
-    'Cryptodome': 'pycryptodome',
-    'crypto': 'pycryptodome',
+    'Crypto': 'pycryptodome',
+    'cups': 'pycups',
     'cv2': 'opencv-python',
     'dateutil': 'python-dateutil',
+    'dbus': 'dbus-python',
+    'discord': 'discord.py',
     'dns': 'dnspython',
     'docx': 'python-docx',
     'dotenv': 'python-dotenv',
     'engineio': 'python-engineio',
+    'faiss': 'faiss-cpu',                               # alternativ faiss-gpu
     'ffmpeg': 'ffmpeg-python',
+    'filer': 'django-filer',
     'fitz': 'PyMuPDF',
+    'fpdf': 'fpdf2',
     'gi': 'PyGObject',
     'git': 'GitPython',
     'github': 'PyGithub',
@@ -169,35 +187,61 @@ PYPI_PACKAGE_NAMES = {
     'gnupg': 'python-gnupg',
     'googleapiclient': 'google-api-python-client',
     'google.oauth2': 'google-auth',
+    'google.protobuf': 'protobuf',
+    'gridfs': 'pymongo',                                # pymongo extension
     'gtk': 'PyGTK',
+    'haystack': 'django-haystack',
+    'igraph': 'python-igraph',
+    'jnius': 'pyjnius',
     'jose': 'python-jose',
     'jwt': 'PyJWT',
+    'kafka': 'kafka-python',
+    'ldap': 'python-ldap',
+    'Levenshtein': 'python-Levenshtein',
     'magic': 'python-magic',
+    'memcache': 'python-memcached',
+    'menus': 'django-cms',                              # django-cms extension
     'multipart': 'python-multipart',
     'mysql': 'mysql-connector-python',
+    'MySQLdb': 'mysqlclient',
     'nacl': 'PyNaCl',
     'nmap': 'python-nmap',
     'odf': 'odfpy',
+    'OpenGL': 'PyOpenGL',
+    'opensearchpy': 'opensearch-py',
     'OpenSSL': 'pyOpenSSL',
     'paho': 'paho-mqtt',
-    'PIL': 'Pillow',
-    # deprecated: 'pkg_resources': 'setuptools',
+    'parler': 'django-parler',
+    'PIL': 'pillow',
+    'playhouse': 'peewee',                              # peewee extension
     'pptx': 'python-pptx',
     'psycopg2': 'psycopg2-binary',
+    'pywt': 'PyWavelets',
+    'rest_framework': 'djangorestframework',
     'RPi': 'RPi.GPIO',
+    'rtmidi': 'python-rtmidi',
+    'ruamel': 'ruamel.yaml',
+    'sekizai': 'django-sekizai',
     'serial': 'pyserial',
     'skimage': 'scikit-image',
     'sklearn': 'scikit-learn',
     'slugify': 'python-slugify',
+    'smbus': 'smbus2',
     'snappy': 'python-snappy',
     'socketio': 'python-socketio',
+    'speech_recognition': 'SpeechRecognition',
+    'storages': 'django-storages',
     'telegram': 'python-telegram-bot',
+    'treebeard': 'django-treebeard',
     'usb': 'pyusb',
     'usb1': 'libusb1',
     'vlc': 'python-vlc',
+    'websocket': 'websocket-client',
+    'whois': 'python-whois',
     'win32api': 'pywin32',
     'win32com': 'pywin32',
     'wx': 'wxPython',
+    'xlib': 'python-xlib',
     'yaml': 'PyYAML',
     'zmq': 'pyzmq',
 }
@@ -397,7 +441,7 @@ def load_env_var_defaults(start_dir: str, env_vars: EnvVarsType) -> EnvVarsType:
             env_vars[var_nam] = loaded_vars[var_nam] = var_val
 
         if os.sep not in file_path:
-            break           # pragma: no cover # prevent endless-loop for ``.env`` file in root dir (os.sep == '/')
+            break           # pragma: no cover # prevent endless-loop for ``.env`` file in root dir (os.sep == "/")
         file_path = os_path_join(os_path_dirname(os_path_dirname(file_path)), DOTENV_FILENAME)
 
     late_env_var_resolver(env_vars, loaded_vars, late_resolved)
@@ -525,6 +569,15 @@ def module_load(import_name: str, path: str | UnsetType | None = UNSET) -> Modul
     return errors or mod_ref
 
 
+def norm_pip_name(pip_name: str) -> str:
+    """ normalize the project name of a package hosted at pypi.org.
+
+    :param pip_name:            project name of a package, like shown in the pypi.org/project/<project_name> URL.
+    :return:                    normalized project name, in lower case and all dots&underscores replaced by hyphens.
+    """
+    return pip_name.replace('.', '-').replace('_', '-').lower()
+
+
 def os_host_name() -> str:
     """ determine the operating system host/machine name.
 
@@ -581,7 +634,7 @@ def _os_platform() -> str:
     """
     if env_str('ANDROID_ARGUMENT') is not None:     # p4a env variable; alternatively use ANDROID_PRIVATE
         return 'android'
-    return env_str('KIVY_BUILD') or sys.platform    # KIVY_BUILD == 'android'/'ios' on Android/iOS
+    return env_str('KIVY_BUILD') or sys.platform    # KIVY_BUILD == 'android' / 'ios' on Android/iOS
 
 
 os_platform = _os_platform()
@@ -919,19 +972,19 @@ class PyMo(ErrorMsgMixin):
         name_parts = MODULE_NAME_PATTERN.split(project_name)
         joints = len(name_parts) - 1
         if joints >= 1:
-            combinations = itertools.product((os_path_sep, ) + MODULE_NAME_SEPS, repeat=joints)
+            combinations = itertools.product(("/", ) + MODULE_NAME_SEPS, repeat=joints)
             for combo in combinations:
                 name = "".join(name_parts[i] + combo[i] for i in range(joints)) + name_parts[-1]
-                *namespace_parts, portion_name = name.rsplit(os_path_sep, maxsplit=1)
+                *namespace_parts, portion_name = name.rsplit("/", maxsplit=1)
                 for path_parts in main_file_paths_parts(portion_name):
                     if os_path_isfile(os_path_join(project_path, *namespace_parts, *path_parts)):
-                        import_name = name.replace(os_path_sep, '.')
+                        import_name = name.replace("/", '.')
                         break
 
         return cls(import_name.replace('-', '_'), project_path=project_path, **pypi_names)
 
     def __repr__(self):
-        return f"PyMo('{self.import_name}', '{self._project_path=}')"
+        return f"PyMo('{self.import_name}', project_path='{self._project_path}', pypi_names={self._pypi_names})"
 
     def _warn(self, msg: str):
         self.error_message = f"{self.__class__.__name__}({self.import_name}) {msg}"
@@ -997,7 +1050,7 @@ class PyMo(ErrorMsgMixin):
     @property
     def pip_name(self) -> str:
         """ pip&PyPI package name of the Python module. """
-        return self.project_name.replace('_', '-').lower()
+        return norm_pip_name(self.project_name)
 
     @property
     def portion_name(self) -> str:
