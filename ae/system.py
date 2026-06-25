@@ -100,11 +100,12 @@ import socket
 import sys
 import warnings
 
+from collections.abc import Callable, Container, Generator, MutableMapping
 from configparser import ConfigParser, ExtendedInterpolation
 from importlib.machinery import ModuleSpec
 from inspect import getinnerframes, getouterframes, getsourcefile
 from types import ModuleType
-from typing import Any, Callable, Container, Generator, MutableMapping, Optional, Self, Union, cast
+from typing import Any, Self, cast
 
 from ae.base import (                                               # type: ignore
     PY_EXT, PY_INIT, PY_MAIN, UNSET,
@@ -114,7 +115,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.7'
+__version__ = '0.3.8'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -366,7 +367,7 @@ def late_env_var_resolver(env_vars: EnvVarsType, loaded_vars: EnvVarsType, late_
             for evn_groups in matches.copy():   # try to replace env vars with its values, removed from matches
                 # noinspection PyUnresolvedReferences
                 if evn_groups[0] == '\\':                               # if escaped '$' character
-                    replace: Optional[str] = "".join(evn_groups[1:-1])  # then only unescape (no var search&substitute)
+                    replace: str | None = "".join(evn_groups[1:-1])  # then only unescape (no var search&substitute)
                 elif (replace := env_vars.get(evn_groups[-1])) is None:
                     replace = os.environ.get(evn_groups[-1])
 
@@ -482,7 +483,7 @@ def module_attr(import_name: str, attr_name: str) -> Any | UnsetType | None:
     return getattr(mod_ref, attr_name, UNSET) if isinstance(mod_ref, ModuleType) else None
 
 
-def module_file_path(local_object: Optional[Callable] = None) -> str:
+def module_file_path(local_object: Callable | None = None) -> str:
     """ determine the absolute path of the module from which this function got called.
 
     :param local_object:        optional local module, class, method, function, traceback, frame, or code object of the
@@ -506,7 +507,7 @@ def module_file_path(local_object: Optional[Callable] = None) -> str:
     return file_path
 
 
-def module_find(import_name: str) -> Union[str, list[str]]:
+def module_find(import_name: str) -> str | list[str]:
     """ determine the file path of a Python module.
 
     :param import_name:         dot-name of the module to find.
@@ -795,7 +796,7 @@ def stack_frames(depth: int = 1) -> Generator:  # Generator[frame, None, None]
         pass
 
 
-def stack_var(name: str, *skip_modules: str, scope: str = '', depth: int = 1) -> Optional[Any]:
+def stack_var(name: str, *skip_modules: str, scope: str = '', depth: int = 1) -> Any | None:
     """ determine variable value in calling stack/frames.
 
     :param name:                variable name to search in the calling stack frames.
@@ -885,7 +886,7 @@ def sys_env_dict() -> dict[str, Any]:
 
 
 def sys_env_text(ind_ch: str = " ", ind_len: int = 12, key_ch: str = "=", key_len: int = 15,
-                 extra_sys_env_dict: Optional[EnvVarsType] = None) -> str:
+                 extra_sys_env_dict: EnvVarsType | None = None) -> str:
     """ compile a formatted text block with system environment info.
 
     :param ind_ch:              indent character (defaults to " ").

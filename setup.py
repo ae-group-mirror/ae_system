@@ -76,7 +76,7 @@ setup_kwargs = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_system',
-    'version': '0.3.7',
+    'version': '0.3.8',
     'zip_safe': True,
 }
 
