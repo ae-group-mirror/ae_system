@@ -115,7 +115,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.8'
+__version__ = '0.3.9'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -456,15 +456,16 @@ def main_file_paths_parts(portion_name: str) -> tuple[tuple[str, ...], ...]:
     :param portion_name:        portion or package name.
     :return:                    tuple of tuples of main/version file name path parts.
     """
-    return (
-        (PY_INIT, ),
+    base_layouts = (
+        (PY_INIT, ),                                                            # flat layouts
         (PY_MAIN, ),
         ('main' + PY_EXT, ),
-        # ('main', PY_INIT),
+        ('main', PY_INIT),
         (portion_name + PY_EXT, ),
-        (portion_name, PY_INIT),    # django main project
-        # (portion_name, PY_MAIN),
+        (portion_name, PY_INIT),                                                # top-level layouts (e.g. Django)
+        (portion_name, PY_MAIN),
     )
+    return base_layouts + tuple(("src", ) + layout for layout in base_layouts)  # base layouts + src layouts
 
 
 def module_attr(import_name: str, attr_name: str) -> Any | UnsetType | None:
@@ -527,8 +528,7 @@ def module_find(import_name: str) -> str | list[str]:
             else:
                 errors.append(f"path not available for {spec.origin or ""} module {import_name}")  # pragma: no cover
         else:
-            # noinspection PyUnnecessaryCast
-            path = cast(str, spec.origin)
+            path = spec.origin
     except (ValueError, Exception) as exc:  # pragma: no cover # pylint: disable=broad-exception-caught
         errors.append(f"find_spec({import_name=}) raised {exc=}")
 
@@ -1037,11 +1037,6 @@ class PyMo(ErrorMsgMixin):
     def package_name(self) -> str:
         """ name of the package/project of the Python module. """
         return '_'.join(self.name_parts)
-
-    @property
-    def package_dir_path(self) -> str:
-        """ package path w/o PY_INIT, w/ project_path if it got specified, else relative to the project root folder. """
-        return os_path_join(self._project_path, *self.name_parts)
 
     @property
     def package_file_path(self) -> str:

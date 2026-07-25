@@ -1,4 +1,4 @@
-# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.79
+# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.87
 image: python:3.12
 
 
@@ -7,9 +7,14 @@ image: python:3.12
 
 before_script:
   - python --version
-  - pip install --upgrade setuptools pip pipx
-  - pip install --upgrade -r requirements.txt -r tests/requirements.txt
-
+  - pip --version
+  - pip install --upgrade pip pipx setuptools
+  - pip --version
+  - >
+    pip install --upgrade --ignore-installed --uploaded-prior-to=P9D
+    -r requirements.txt
+    -r tests/requirements.txt
+  - pip install --upgrade --ignore-installed ae_base ae_app_log
 
 integrity:
   script:
@@ -52,7 +57,7 @@ pypi_deploy:
     TWINE_USERNAME: $PYPI_USERNAME
     TWINE_PASSWORD: $PYPI_PASSWORD
   before_script:
-     - pip install --upgrade pip build twine
+     - pip install --upgrade build pip twine
      - python -m build
   script:
     # use test.pypi.org for integration/unit test projects (if is under :data:`~aedev.base.TEST_PROJECTS_PARENT_FOLDER`)
