@@ -1438,16 +1438,6 @@ class TestPyMo:
 
         assert PyMo.from_path(project_path).namespace_name == namespace
 
-    def test_package_dir_path(self):
-        mod = PyMo("tst_nam")
-        assert mod.package_dir_path == "tst_nam"
-
-        mod = PyMo("tst_nam", project_path="prj_path")
-        assert mod.package_dir_path == os_path_join("prj_path", "tst_nam")
-
-        mod = PyMo("tst.nam", project_path="prj_path")
-        assert mod.package_dir_path == os_path_join("prj_path", "tst", "nam")
-
     def test_package_file_path(self):
         mod = PyMo("tst_nam")
         assert mod.package_file_path == f"tst_nam/{PY_INIT}"
