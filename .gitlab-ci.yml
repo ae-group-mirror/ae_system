@@ -1,22 +1,32 @@
-# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.87
+# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.91
 image: python:3.12
 
 
 
 
 
-before_script:
-  - python --version
-  - pip --version
-  - pip install --upgrade pip pipx setuptools
-  - pip --version
-  - >
-    pip install --upgrade --ignore-installed --uploaded-prior-to=P9D
-    -r requirements.txt
-    -r tests/requirements.txt
-  - pip install --upgrade --ignore-installed ae_base ae_app_log
+.check_rules: &check-rules
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: never
+    - if: $CI_COMMIT_BRANCH =~ /^release/
+      when: never
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH
 
 integrity:
+  <<: *check-rules
+  before_script:
+    - python --version
+    - pip --version
+    - pip install --upgrade pip pipx setuptools
+    - pip --version
+    - >
+      pip install --upgrade --force-reinstall --uploaded-prior-to=P9D
+      -r requirements.txt
+      -r tests/requirements.txt
+    - pip install --upgrade --force-reinstall ae_base ae_app_log
   script:
     - pipx run --spec aedev_project_manager project-manager -v check-integrity
   artifacts:
@@ -26,11 +36,11 @@ integrity:
       - htmlcov/
       - .pytest_cache
 
-
 pages:
   stage: deploy
   dependencies:
     - integrity
+  <<: *check-rules
   script:
     - ls -l -R
     - mkdir -p public/coverage

@@ -115,7 +115,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.9'
+__version__ = '0.3.10'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -916,7 +916,7 @@ class PyMo(ErrorMsgMixin):
         :param project_path:    optional project root folder path.
         :param pypi_names:      irregular PyPI project/distribution names; not convertable from their import names
                                 (key_word==import name; value==PyPi distribution/project name). if the import name
-                                contains a dot-character then specify this value as **dict.
+                                contains a dot-character then specify this value as ``**dict``.
         """
         super().__init__()
         if not import_name:
