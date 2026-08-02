@@ -115,7 +115,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.10'
+__version__ = '0.3.11'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -317,13 +317,11 @@ def full_stack_trace(ex: Exception, frames_with_locals: int = 3) -> str:
                 for line in lines:
                     ret += ' ' * 4 + line.lstrip()
 
-        for info in reversed(getouterframes(trace_back.tb_frame)[1:]):
+        all_frames = list(reversed(getouterframes(trace_back.tb_frame)[1:])) + getinnerframes(trace_back)
+        first_locals_idx = len(all_frames) - frames_with_locals
+        for idx, info in enumerate(all_frames):
             ext_ret(info)
-        inner_frames = getinnerframes(trace_back)
-        locals_frame_idx = len(inner_frames) - frames_with_locals
-        for idx, info in enumerate(inner_frames):
-            ext_ret(info)
-            if idx >= locals_frame_idx:
+            if idx >= first_locals_idx:
                 for nam, val in info.frame.f_locals.items():
                     val = repr(val).replace(os.linesep, "\\n")
                     ret += ' ' * 6 + f"= {nam}: {val}" + os.linesep
