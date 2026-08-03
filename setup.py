@@ -75,7 +75,7 @@ setup_kwargs: dict[str, Any] = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_system',
-    'version': '0.3.11',
+    'version': '0.3.12',
     'zip_safe': True,
 }
 

@@ -111,11 +111,11 @@ from ae.base import (                                               # type: igno
     PY_EXT, PY_INIT, PY_MAIN, UNSET,
     defuse, dummy_function, env_str, mask_secrets, norm_path,
     os_path_abspath, os_path_basename, os_path_dirname, os_path_isfile, os_path_join, os_path_splitext,
-    read_file, UnsetType)
+    pep8_format, read_file, UnsetType)
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.11'
+__version__ = '0.3.12'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -323,8 +323,9 @@ def full_stack_trace(ex: Exception, frames_with_locals: int = 3) -> str:
             ext_ret(info)
             if idx >= first_locals_idx:
                 for nam, val in info.frame.f_locals.items():
-                    val = repr(val).replace(os.linesep, "\\n")
-                    ret += ' ' * 6 + f"= {nam}: {val}" + os.linesep
+                    val = pep8_format(val, indent_level=2, debug_mode=True)
+                    # noinspection PyStringConversionWithoutDunderMethod
+                    ret += ' ' * 6 + f"= {nam}: {type(val)} = {val}" + os.linesep
 
     return ret
 
