@@ -96,7 +96,7 @@ def test_pip_names():
         found_pip_names.add(pip_norm_name)
 
 
-class TestHelpers:
+class TestCommonHelpers:
     def test_app_name_guess(self):
         assert app_name_guess()     # app.exe name in pytest returning '_jb_pytest_runner'(PyCharm)/'__main__'(console)
         assert app_name_guess() != 'main'
@@ -130,6 +130,107 @@ class TestHelpers:
         assert isinstance(cfg_parser, ConfigParser)
         assert cfg_parser.optionxform is str
 
+    def test_main_file_paths_parts(self):
+        assert isinstance(main_file_paths_parts(""), tuple)
+        assert len(main_file_paths_parts(""))
+        assert isinstance(main_file_paths_parts("")[0], tuple)
+
+        assert ('main' + PY_EXT, ) in main_file_paths_parts("")
+        assert any(PY_MAIN in _ for _ in main_file_paths_parts(""))
+        assert any(PY_INIT in _ for _ in main_file_paths_parts(""))
+
+        por_name = "portion_tst_name"
+        assert ('main' + PY_EXT, ) in main_file_paths_parts(por_name)
+        assert (por_name, PY_INIT) in main_file_paths_parts(por_name)
+        assert any(por_name in _ for _ in main_file_paths_parts(por_name))
+        assert any(por_name + PY_EXT in _ for _ in main_file_paths_parts(por_name))
+
+    def test_norm_pip_name(self):
+        assert norm_pip_name('') == ''
+        assert norm_pip_name('Abc.DEF-gHi_jkL') == 'abc-def-ghi-jkl'
+
+    def test_os_host_name(self):
+        print(os_host_name())
+        assert os_host_name()
+
+    def test_os_local_ip(self):
+        assert os_local_ip() or os_local_ip() == ""
+
+    def test_os_platform_android(self):
+        try:
+            os.environ['ANDROID_ARGUMENT'] = 'tst'
+            assert _os_platform() == 'android'
+        finally:
+            os.environ.pop('ANDROID_ARGUMENT', None)
+
+        # noinspection PyUnreachableCode
+        try:
+            os.environ['KIVY_BUILD'] = 'android'
+            assert _os_platform() == 'android'
+        finally:
+            os.environ.pop('KIVY_BUILD', None)
+
+    def test_os_platform_cygwin(self):
+        old_platform = sys.platform
+        try:
+            sys.platform = 'cygwin'
+            assert _os_platform() == 'cygwin'
+        finally:
+            sys.platform = old_platform
+
+    def test_os_platform_darwin(self):
+        old_platform = sys.platform
+        try:
+            sys.platform = 'darwin'
+            assert _os_platform() == 'darwin'
+        finally:
+            sys.platform = old_platform
+
+    def test_os_platform_freebsd(self):
+        old_platform = sys.platform
+        try:
+            sys.platform = 'freebsd'
+            assert _os_platform() == 'freebsd'
+        finally:
+            sys.platform = old_platform
+
+    def test_os_platform_ios(self):
+        try:
+            os.environ['KIVY_BUILD'] = 'ios'
+            assert _os_platform() == 'ios'
+        finally:
+            os.environ.pop('KIVY_BUILD', None)
+
+    def test_os_platform_win32(self):
+        old_platform = sys.platform
+        try:
+            sys.platform = 'win32'
+            assert _os_platform() == 'win32'
+        finally:
+            sys.platform = old_platform
+
+    def test_os_user_name(self):
+        print(os_user_name())
+        assert os_user_name()
+
+    def test_project_main_file(self, tmp_path):
+        assert project_main_file("not_existing_xy.tst") == ""
+
+        ae_system_main_file = norm_path(os.path.join("ae", "system" + PY_EXT))
+        assert project_main_file("ae.system") == ae_system_main_file
+        assert project_main_file("ae.system", norm_path("")) == ae_system_main_file
+
+        local_project_dir = os.path.join(str(tmp_path), "ae_system")
+        local_main_file = norm_path(os.path.join(local_project_dir, "main.py"))
+
+        write_file(local_main_file, "# main file content", make_dirs=True)
+        assert project_main_file("ae.system") == ae_system_main_file
+        assert project_main_file("ae.system", norm_path("")) == ae_system_main_file
+        assert project_main_file("ae.system", local_project_dir) == local_main_file
+        assert project_main_file("ae.system", norm_path(local_project_dir)) == local_main_file
+
+
+class TestEnvVars:
     def test_late_env_var_resolver_errors_and_warnings(self):
         # all branches in this follow-up/resolve function are already covered by the test_load_env_var_defaults*() tests
         late_env_var_resolver({}, {}, {})
@@ -285,89 +386,6 @@ class TestHelpers:
         assert loaded[DOTENV_LATE_VAR_PRE + '3'] == DOTENV_LATE_VALUES[3]
         assert os.environ[DOTENV_LATE_VAR_PRE + '3'] == DOTENV_LATE_VALUES[3]
 
-    def test_main_file_paths_parts(self):
-        assert isinstance(main_file_paths_parts(""), tuple)
-        assert len(main_file_paths_parts(""))
-        assert isinstance(main_file_paths_parts("")[0], tuple)
-
-        assert ('main' + PY_EXT, ) in main_file_paths_parts("")
-        assert any(PY_MAIN in _ for _ in main_file_paths_parts(""))
-        assert any(PY_INIT in _ for _ in main_file_paths_parts(""))
-
-        por_name = "portion_tst_name"
-        assert ('main' + PY_EXT, ) in main_file_paths_parts(por_name)
-        assert (por_name, PY_INIT) in main_file_paths_parts(por_name)
-        assert any(por_name in _ for _ in main_file_paths_parts(por_name))
-        assert any(por_name + PY_EXT in _ for _ in main_file_paths_parts(por_name))
-
-    def test_norm_pip_name(self):
-        assert norm_pip_name('') == ''
-        assert norm_pip_name('Abc.DEF-gHi_jkL') == 'abc-def-ghi-jkl'
-
-    def test_os_host_name(self):
-        print(os_host_name())
-        assert os_host_name()
-
-    def test_os_local_ip(self):
-        assert os_local_ip() or os_local_ip() == ""
-
-    def test_os_platform_android(self):
-        try:
-            os.environ['ANDROID_ARGUMENT'] = 'tst'
-            assert _os_platform() == 'android'
-        finally:
-            os.environ.pop('ANDROID_ARGUMENT', None)
-
-        # noinspection PyUnreachableCode
-        try:
-            os.environ['KIVY_BUILD'] = 'android'
-            assert _os_platform() == 'android'
-        finally:
-            os.environ.pop('KIVY_BUILD', None)
-
-    def test_os_platform_cygwin(self):
-        old_platform = sys.platform
-        try:
-            sys.platform = 'cygwin'
-            assert _os_platform() == 'cygwin'
-        finally:
-            sys.platform = old_platform
-
-    def test_os_platform_darwin(self):
-        old_platform = sys.platform
-        try:
-            sys.platform = 'darwin'
-            assert _os_platform() == 'darwin'
-        finally:
-            sys.platform = old_platform
-
-    def test_os_platform_freebsd(self):
-        old_platform = sys.platform
-        try:
-            sys.platform = 'freebsd'
-            assert _os_platform() == 'freebsd'
-        finally:
-            sys.platform = old_platform
-
-    def test_os_platform_ios(self):
-        try:
-            os.environ['KIVY_BUILD'] = 'ios'
-            assert _os_platform() == 'ios'
-        finally:
-            os.environ.pop('KIVY_BUILD', None)
-
-    def test_os_platform_win32(self):
-        old_platform = sys.platform
-        try:
-            sys.platform = 'win32'
-            assert _os_platform() == 'win32'
-        finally:
-            sys.platform = old_platform
-
-    def test_os_user_name(self):
-        print(os_user_name())
-        assert os_user_name()
-
     def test_parse_dotenv_dollar_char_does_not_cutoff_value(self):
         with tempfile.NamedTemporaryFile(mode="w") as fp:
             fp.write('declaredVar = DeclaredValue\n')
@@ -459,7 +477,7 @@ class TestHelpers:
             assert 'var_nam' in loaded
             assert loaded['var_nam'] == var_val
 
-    def test_parse_dotenv_multi_line_var_value(self):
+    def test_parse_dotenv_multi_line_var_value_on_linux(self):
         with tempfile.NamedTemporaryFile(mode="w") as fp:
             var_val = "{'key': {'sub-key':\\\n    ['list-item',\\\n     'list-item with = char', ]}}"
             fp.write("var_nam=" + var_val)
@@ -470,6 +488,39 @@ class TestHelpers:
             assert 'var_nam' in loaded
             assert loaded['var_nam'] == var_val.replace('\\\n', "")
 
+        # works also if the next/wrapped lines are not indented
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            var_val = "{'key': {'sub-key':\\\n['list-item',\\\n'list-item with = char', ]}}"
+            fp.write("var_nam=" + var_val)
+            fp.seek(0)
+
+            loaded = parse_dotenv(fp.name, {})
+
+            assert 'var_nam' in loaded
+            assert loaded['var_nam'] == var_val.replace('\\\n', "")
+
+    def test_parse_dotenv_multi_line_var_value_on_macos(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            var_val = "{'key': {'sub-key':\\\r    ['list-item',\\\r     'list-item with = char', ]}}"
+            fp.write("var_nam=" + var_val)
+            fp.seek(0)
+
+            loaded = parse_dotenv(fp.name, {})
+
+            assert 'var_nam' in loaded
+            assert loaded['var_nam'] == var_val.replace('\\\r', "")
+
+    def test_parse_dotenv_multi_line_var_value_on_win(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            var_val = "{'key': {'sub-key':\\\r\n    ['list-item',\\\r\n     'list-item with = char', ]}}"
+            fp.write("var_nam=" + var_val)
+            fp.seek(0)
+
+            loaded = parse_dotenv(fp.name, {})
+
+            assert 'var_nam' in loaded
+            assert loaded['var_nam'] == var_val.replace('\\\r\n', "")
+
     def test_parse_dotenv_single_in_double_quoted_value(self):
         with tempfile.NamedTemporaryFile(mode="w") as fp:
             fp.write('''var_nam="'var val'"''')
@@ -479,6 +530,26 @@ class TestHelpers:
 
             assert 'var_nam' in loaded
             assert loaded['var_nam'] == "'var val'"
+
+    def test_parse_dotenv_single_quote_in_value(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write("""VAR_NAME='I\'m here'""")
+            fp.seek(0)
+
+            loaded = parse_dotenv(fp.name, {})
+
+            assert 'VAR_NAME' in loaded
+            assert loaded['VAR_NAME'] == "I'm here"
+
+    def test_parse_dotenv_single_quote_bash_splices_unsupported(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write("""VAR_NAME='I'"'"'m here'""")     # see issue https://github.com/theskumar/python-dotenv/pull/633
+            fp.seek(0)
+
+            loaded = parse_dotenv(fp.name, {})
+
+            assert 'VAR_NAME' in loaded
+            assert loaded['VAR_NAME'] == """I'"'"'m here"""     # w/ bash splices supported would result in "I'm here"
 
     def test_parse_dotenv_single_value(self):
         with tempfile.NamedTemporaryFile(mode="w") as fp:
@@ -629,22 +700,6 @@ class TestHelpers:
             assert 'var_nam' in loaded
             late_env_var_resolver(loaded, loaded, late_resolved)
             assert loaded['var_nam'] == "var val $env_var ${env_var}"
-
-    def test_project_main_file(self, tmp_path):
-        assert project_main_file("not_existing_xy.tst") == ""
-
-        ae_system_main_file = norm_path(os.path.join("ae", "system" + PY_EXT))
-        assert project_main_file("ae.system") == ae_system_main_file
-        assert project_main_file("ae.system", norm_path("")) == ae_system_main_file
-
-        local_project_dir = os.path.join(str(tmp_path), "ae_system")
-        local_main_file = norm_path(os.path.join(local_project_dir, "main.py"))
-
-        write_file(local_main_file, "# main file content", make_dirs=True)
-        assert project_main_file("ae.system") == ae_system_main_file
-        assert project_main_file("ae.system", norm_path("")) == ae_system_main_file
-        assert project_main_file("ae.system", local_project_dir) == local_main_file
-        assert project_main_file("ae.system", norm_path(local_project_dir)) == local_main_file
 
     def test_sys_env_dict(self):
         assert sys_env_dict().get('python ver')
