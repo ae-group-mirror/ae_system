@@ -115,7 +115,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.12'
+__version__ = '0.3.13'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -246,7 +246,7 @@ PYPI_PACKAGE_NAMES = {
     'yaml': 'PyYAML',
     'zmq': 'pyzmq',
 }
-""" irregular project/package names; not convertable from their import names. """
+""" irregular project/package names; not convertable directly/only from their import names. """
 
 SKIPPED_MODULES = ('ae.base', 'ae.system', 'ae.files', 'ae.paths', 'ae.dynamicod',
                    'ae.core', 'ae.console', 'ae.snell', 'ae.managed_files',
@@ -353,8 +353,8 @@ def late_env_var_resolver(env_vars: EnvVarsType, loaded_vars: EnvVarsType, late_
                                 also used to search&resolve env var values (if not found then searched in os.environ).
     :param loaded_vars:         recently loaded environment variables, will get substituted.
     :param late_resolved:       matches of loaded env vars to be resolved late (after all env vars got detected and
-                                loaded). the key of this dict is the name of the env variable which has other env vars
-                                in its values to be resolved/substituted. the item value of this dict is a list of
+                                loaded). each key of this dict is the name of the env variable which has other env vars
+                                in its values to be resolved/substituted. each item value of this dict is a list of
                                 matcher group tuples for each found env variable. the group/tuple items are
                                 (0) escape character, (1) the dollar character, (2) the env var name literal (optionally
                                 in curly brackets) and (3/-1) the env var name.
