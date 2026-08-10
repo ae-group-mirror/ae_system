@@ -455,6 +455,33 @@ class TestEnvVars:
             assert len(recwarn) == 1
             assert f"doesn't match {DOTENV_FILENAME} format" in str(recwarn[0].message)
 
+    def test_parse_dotenv_inline_comments(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write("VAL_WITH_HASH01=#VAL1\n"
+                     "VAL_WITH_HASH02=VAL#2\n"
+                     "VAL_WITH_HASH03='VAL3 #'\n"
+                     "VAL_WITH_HASH04=\" #4 VAL #\"\n" 
+                     "VAL_WITH_HASH11=#VAL1      \t# comment\n"
+                     "VAL_WITH_HASH12=VAL#2        # comment\n"
+                     "VAL_WITH_HASH13='VAL3 #' \t  # comment\n"
+                     "VAL_WITH_HASH14=\"VAL #4 #\" #comment#\n" 
+                     "EMPTY_VAL_COMMENT1= # comment\n"
+                     "EMPTY_VAL_COMMENT2=\t#comment\n")
+            fp.seek(0)
+
+            loaded = parse_dotenv(fp.name, {})
+
+            assert loaded['VAL_WITH_HASH01'] == "#VAL1"
+            assert loaded['VAL_WITH_HASH02'] == "VAL#2"
+            assert loaded['VAL_WITH_HASH03'] == "VAL3 #"
+            assert loaded['VAL_WITH_HASH04'] == " #4 VAL #"
+            assert loaded['VAL_WITH_HASH11'] == "#VAL1"
+            assert loaded['VAL_WITH_HASH12'] == "VAL#2"
+            assert loaded['VAL_WITH_HASH13'] == "VAL3 #"
+            assert loaded['VAL_WITH_HASH14'] == "VAL #4 #"
+            assert loaded['EMPTY_VAL_COMMENT1'] == ""
+            assert loaded['EMPTY_VAL_COMMENT2'] == ""
+
     def test_parse_dotenv_literal_dict_with_list(self):
         with tempfile.NamedTemporaryFile(mode="w") as fp:
             var_val = "{'key': {'sub-key': ['list-item', 'list-item with = char', ]}}"
