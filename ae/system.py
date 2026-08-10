@@ -115,25 +115,25 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.13'
+__version__ = '0.3.14'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
 
-DOTENV_FILENAME = '.env'                        #: name of the file containing console/shell environment variables
+DOTENV_FILENAME = '.env'                                #: name of the file that declares shell/OS environment variables
 DOTENV_LINE_MATCHER = re.compile(r"""
     ^
-    (?:export\s+)?          # optional export
-    ([\w.]+)                # env variable name
-    (?:\s*=\s*|:\s+?)       # separator
-    (                       # optional value begin
-        '(?:\'|[^'])*'      #   single quoted value
-        |                   #   or
-        "(?:\"|[^"])*"      #   double quoted value
-        |                   #   or
-        [^#\n]+             #   unquoted value
-    )?                      # value end
-    (?:\s*\#.*)?            # optional comment
+    (?:export\s+)?              # optional export
+    ([\w.]+)                    # env variable name
+    (?:\s*=\s*|:\s+?)           # separator
+    (                           # optional value begin
+        '(?:\'|[^'])*'          #   single quoted value
+        |                       #   or
+        "(?:\"|[^"])*"          #   double quoted value
+        |                       #   or
+        (?:[^\n#]|(?<!\s)\#)+   #   unquoted value (#-char included in variable value, if not prefixed with whitespace)
+    )?                          # value end
+    (?:\s*\#.*)?                # optional comment
     $
     """, re.VERBOSE)
 DOTENV_VAR_IN_VAL_MATCHER = re.compile(r"""
