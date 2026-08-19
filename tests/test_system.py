@@ -386,6 +386,31 @@ class TestEnvVars:
         assert loaded[DOTENV_LATE_VAR_PRE + '3'] == DOTENV_LATE_VALUES[3]
         assert os.environ[DOTENV_LATE_VAR_PRE + '3'] == DOTENV_LATE_VALUES[3]
 
+    def test_parse_dotenv_default_value_for_undefined_or_empty_var(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write('EMPTY_VAR = \n')
+            fp.write('DECLARED_VAR = ${EMPTY_VAR:-DefaultValue}\n')
+            fp.write('DECLARED_VAR2 = ${EMPTY_VAR-DefaultValue}\n')
+            fp.write('VAR_NAME = ${UNDECLARED_VAR_NAME:-UndeclaredDefaultValue}\n')
+            fp.write('VAR_NAME2 = ${UNDECLARED_VAR_NAME-UndeclaredDefaultValue}\n')
+            fp.seek(0)
+            late_resolved = {}
+
+            loaded = parse_dotenv(fp.name, late_resolved)
+
+            assert 'EMPTY_VAR' in loaded
+            assert 'DECLARED_VAR' in loaded
+            assert 'VAR_NAME' in loaded
+
+            late_env_var_resolver(loaded, loaded, late_resolved)
+
+            assert loaded['EMPTY_VAR'] == ""
+            # Possix default values for empty/undeclared variables not fully supported (as has to be expanded by caller)
+            assert loaded['DECLARED_VAR'] == "${EMPTY_VAR:-DefaultValue}"                   # "DefaultValue"
+            assert loaded['DECLARED_VAR2'] == "${EMPTY_VAR-DefaultValue}"                   # "" (EMPTY_VAR value)
+            assert loaded['VAR_NAME'] == "${UNDECLARED_VAR_NAME:-UndeclaredDefaultValue}"   # "UndeclaredDefaultValue"
+            assert loaded['VAR_NAME2'] == "${UNDECLARED_VAR_NAME-UndeclaredDefaultValue}"   # "UndeclaredDefaultValue"
+
     def test_parse_dotenv_dollar_char_does_not_cutoff_value(self):
         with tempfile.NamedTemporaryFile(mode="w") as fp:
             fp.write('declaredVar = DeclaredValue\n')
@@ -398,7 +423,9 @@ class TestEnvVars:
 
             assert 'replacedVar' in loaded
             assert 'uncutVar' in loaded
+
             late_env_var_resolver(loaded, loaded, late_resolved)
+
             assert loaded['replacedVar'] == "beforeTheDollarDeclaredValue"
             assert loaded['uncutVar'] == "beforeTheDollar$afterTheDollar"
 
@@ -422,6 +449,45 @@ class TestEnvVars:
             assert 'var_nam' in loaded
             assert loaded['var_nam'] == '"var val"'
 
+    def test_parse_dotenv_empty_value(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write("var_nam=")
+            fp.seek(0)
+            late_resolved = {}
+
+            loaded = parse_dotenv(fp.name, late_resolved)
+
+            assert 'var_nam' in loaded
+
+            late_env_var_resolver(loaded, loaded, late_resolved)
+
+            assert loaded['var_nam'] == ""
+
+    def test_parse_dotenv_error_space_prefixed_var_name(self, recwarn):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write(' var_nam="var val"')
+            fp.seek(0)
+
+            loaded = parse_dotenv(fp.name, {})
+
+            assert 'var_nam' not in loaded
+            assert len(recwarn) == 1
+            assert f"doesn't match {DOTENV_FILENAME} format" in str(recwarn[0].message)
+
+    def test_parse_dotenv_escaped_double_quote(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write('var_nam="escaped\\"val"')
+            fp.seek(0)
+            late_resolved = {}
+
+            loaded = parse_dotenv(fp.name, late_resolved)
+
+            assert 'var_nam' in loaded
+
+            late_env_var_resolver(loaded, loaded, late_resolved)
+
+            assert loaded['var_nam'] == 'escaped"val'
+
     def test_parse_dotenv_exclude_vars_dict_arg(self):
         with tempfile.NamedTemporaryFile(mode="w") as fp:
             fp.write("exc_var0=var val\nvar_nam=var val\nexc_var1='excluded var val'")
@@ -444,16 +510,104 @@ class TestEnvVars:
             assert 'exc_var1' not in loaded
             assert 'var_nam' in loaded
 
-    def test_parse_dotenv_error_space_prefixed_var_name(self, recwarn):
+    def test_parse_dotenv_expands_variables_found_in_values(self):
         with tempfile.NamedTemporaryFile(mode="w") as fp:
-            fp.write(' var_nam="var val"')
+            fp.write("env_var=var val\nvar_nam=$env_var")
+            fp.seek(0)
+            late_resolved = {}
+
+            loaded = parse_dotenv(fp.name, late_resolved)
+
+            assert 'var_nam' in loaded
+
+            late_env_var_resolver(loaded, loaded, late_resolved)
+
+            assert loaded['var_nam'] == "var val"
+            assert 'env_var' in loaded
+            assert loaded['env_var'] == "var val"
+
+    def test_parse_dotenv_expands_variable_wrapped_in_brackets(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write("env_var=var val\n\n\nvar_nam=${env_var} tst")
+            fp.seek(0)
+            late_resolved = {}
+
+            loaded = parse_dotenv(fp.name, late_resolved)
+
+            assert 'var_nam' in loaded
+
+            late_env_var_resolver(loaded, loaded, late_resolved)
+
+            assert loaded['var_nam'] == "var val tst"
+            assert 'env_var' in loaded
+            assert loaded['env_var'] == "var val"
+
+    def test_parse_dotenv_expands_not_an_undefined_variable_to_empty_string(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write("var_nam=$env_var")
+            fp.seek(0)
+            late_resolved = {}
+
+            loaded = parse_dotenv(fp.name, late_resolved)
+
+            assert 'env_var' not in loaded
+            assert 'var_nam' in loaded
+
+            late_env_var_resolver(loaded, loaded, late_resolved)
+
+            assert loaded['var_nam'] == "$env_var"
+
+    def test_parse_dotenv_expands_in_double_quoted_values(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write("env_var=tst\nvar_nam=\"var val $env_var\"")
+            fp.seek(0)
+            late_resolved = {}
+
+            loaded = parse_dotenv(fp.name, late_resolved)
+
+            assert 'var_nam' in loaded
+
+            late_env_var_resolver(loaded, loaded, late_resolved)
+
+            assert loaded['var_nam'] == "var val tst"
+
+    def test_parse_dotenv_expands_not_in_single_quoted_values(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write("var_nam='var val $env_var'")
+            fp.seek(0)
+            late_resolved = {}
+
+            loaded = parse_dotenv(fp.name, late_resolved)
+
+            assert 'var_nam' in loaded
+
+            late_env_var_resolver(loaded, loaded, late_resolved)
+
+            assert loaded['var_nam'] == "var val $env_var"
+
+    def test_parse_dotenv_expands_not_escaped_variables(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write("var_nam=var val \\$env_var \\${env_var}")
+            fp.seek(0)
+            late_resolved = {}
+
+            loaded = parse_dotenv(fp.name, late_resolved)
+
+            assert 'var_nam' in loaded
+
+            late_env_var_resolver(loaded, loaded, late_resolved)
+
+            assert loaded['var_nam'] == "var val $env_var ${env_var}"
+
+    def test_parse_dotenv_export_var_declaration(self):
+        with tempfile.NamedTemporaryFile(mode="w") as fp:
+            fp.write("export var_nam=var val")
             fp.seek(0)
 
             loaded = parse_dotenv(fp.name, {})
 
-            assert 'var_nam' not in loaded
-            assert len(recwarn) == 1
-            assert f"doesn't match {DOTENV_FILENAME} format" in str(recwarn[0].message)
+            assert 'var_nam' in loaded
+            assert loaded['var_nam'] == "var val"
 
     def test_parse_dotenv_inline_comments(self):
         with tempfile.NamedTemporaryFile(mode="w") as fp:
@@ -616,117 +770,6 @@ class TestEnvVars:
 
             assert 'var_nam' in loaded
             assert loaded['var_nam'] == "var val"
-
-    def test_parse_dotenv_var_escaped_double_quote(self):
-        with tempfile.NamedTemporaryFile(mode="w") as fp:
-            fp.write('var_nam="escaped\\"val"')
-            fp.seek(0)
-            late_resolved = {}
-
-            loaded = parse_dotenv(fp.name, late_resolved)
-
-            assert 'var_nam' in loaded
-            late_env_var_resolver(loaded, loaded, late_resolved)
-            assert loaded['var_nam'] == 'escaped"val'
-
-    def test_parse_dotenv_var_empty_value(self):
-        with tempfile.NamedTemporaryFile(mode="w") as fp:
-            fp.write("var_nam=")
-            fp.seek(0)
-            late_resolved = {}
-
-            loaded = parse_dotenv(fp.name, late_resolved)
-
-            assert 'var_nam' in loaded
-            late_env_var_resolver(loaded, loaded, late_resolved)
-            assert loaded['var_nam'] == ""
-
-    def test_parse_dotenv_var_expands_variables_found_in_values(self):
-        with tempfile.NamedTemporaryFile(mode="w") as fp:
-            fp.write("env_var=var val\nvar_nam=$env_var")
-            fp.seek(0)
-            late_resolved = {}
-
-            loaded = parse_dotenv(fp.name, late_resolved)
-
-            assert 'var_nam' in loaded
-            late_env_var_resolver(loaded, loaded, late_resolved)
-            assert loaded['var_nam'] == "var val"
-            assert 'env_var' in loaded
-            assert loaded['env_var'] == "var val"
-
-    def test_parse_dotenv_var_expands_variable_wrapped_in_brackets(self):
-        with tempfile.NamedTemporaryFile(mode="w") as fp:
-            fp.write("env_var=var val\n\n\nvar_nam=${env_var} tst")
-            fp.seek(0)
-            late_resolved = {}
-
-            loaded = parse_dotenv(fp.name, late_resolved)
-
-            assert 'var_nam' in loaded
-            late_env_var_resolver(loaded, loaded, late_resolved)
-            assert loaded['var_nam'] == "var val tst"
-            assert 'env_var' in loaded
-            assert loaded['env_var'] == "var val"
-
-    def test_parse_dotenv_var_expands_not_an_undefined_variable_to_empty_string(self):
-        with tempfile.NamedTemporaryFile(mode="w") as fp:
-            fp.write("var_nam=$env_var")
-            fp.seek(0)
-            late_resolved = {}
-
-            loaded = parse_dotenv(fp.name, late_resolved)
-
-            assert 'env_var' not in loaded
-            assert 'var_nam' in loaded
-            late_env_var_resolver(loaded, loaded, late_resolved)
-            assert loaded['var_nam'] == "$env_var"
-
-    def test_parse_dotenv_var_expands_in_double_quoted_values(self):
-        with tempfile.NamedTemporaryFile(mode="w") as fp:
-            fp.write("env_var=tst\nvar_nam=\"var val $env_var\"")
-            fp.seek(0)
-            late_resolved = {}
-
-            loaded = parse_dotenv(fp.name, late_resolved)
-
-            assert 'var_nam' in loaded
-            late_env_var_resolver(loaded, loaded, late_resolved)
-            assert loaded['var_nam'] == "var val tst"
-
-    def test_parse_dotenv_var_export_keyword(self):
-        with tempfile.NamedTemporaryFile(mode="w") as fp:
-            fp.write("export var_nam=var val")
-            fp.seek(0)
-
-            loaded = parse_dotenv(fp.name, {})
-
-            assert 'var_nam' in loaded
-            assert loaded['var_nam'] == "var val"
-
-    def test_parse_dotenv_var_not_expands_in_single_quoted_values(self):
-        with tempfile.NamedTemporaryFile(mode="w") as fp:
-            fp.write("var_nam='var val $env_var'")
-            fp.seek(0)
-            late_resolved = {}
-
-            loaded = parse_dotenv(fp.name, late_resolved)
-
-            assert 'var_nam' in loaded
-            late_env_var_resolver(loaded, loaded, late_resolved)
-            assert loaded['var_nam'] == "var val $env_var"
-
-    def test_parse_dotenv_var_not_expands_escaped_variables(self):
-        with tempfile.NamedTemporaryFile(mode="w") as fp:
-            fp.write("var_nam=var val \\$env_var \\${env_var}")
-            fp.seek(0)
-            late_resolved = {}
-
-            loaded = parse_dotenv(fp.name, late_resolved)
-
-            assert 'var_nam' in loaded
-            late_env_var_resolver(loaded, loaded, late_resolved)
-            assert loaded['var_nam'] == "var val $env_var ${env_var}"
 
     def test_sys_env_dict(self):
         assert sys_env_dict().get('python ver')

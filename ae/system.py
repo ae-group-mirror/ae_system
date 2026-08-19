@@ -115,7 +115,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.14'
+__version__ = '0.3.15'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -136,15 +136,19 @@ DOTENV_LINE_MATCHER = re.compile(r"""
     (?:\s*\#.*)?                # optional comment
     $
     """, re.VERBOSE)
+""" .env file line parsing regex. """
+
 DOTENV_VAR_IN_VAL_MATCHER = re.compile(r"""
-    (\\)?                   # is it escaped with a backslash? (env variable name matcher groups item 0 | evn_groups[0])
-    (\$)                    # literal $ (matcher evn_groups[1])
-    (                       # group for easier subsitution via evn_groups[0:-1] (matcher evn_groups[2])
-        \{?                 #   allow brace wrapping
-        ([A-Za-z0-9_]+)     #   match var name; allowing lowercase letters in env var names (matcher evn_groups[3|-1]
-        }?                  #   closing brace
-    )                       # braces end
+    (\\)?                       # escaped with a backslash? (env variable name matcher groups item 0 | evn_groups[0])
+    (\$)                        # literal $ (matcher evn_groups[1])
+    (                           # group for easier subsitution via evn_groups[0:-1] (matcher evn_groups[2])
+        \{?                     #   allow brace wrapping
+        ([A-Za-z0-9_:\-]+)      #   match var name including default value (matcher evn_groups[3|-1]
+        }?                      #   closing brace
+    )                           # braces end
     """, re.IGNORECASE | re.VERBOSE)
+""" .env variable name expansion in variable value; allowing lowercase var names and shell var default value ops (see
+<https://www.gnu.org/software/bash/manual/bash.html#Shell-Parameter-Expansion-1>) """
 
 MODULE_NAME_SEPS = ('_', '.', '-')                      #: separators considered equivalent for comparison (:pep:`503`)
 MODULE_NAME_PATTERN = re.compile("[" + "".join(MODULE_NAME_SEPS) + "]+")  # escape hyphen/'\-' if not first/last chr
