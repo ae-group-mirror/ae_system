@@ -110,12 +110,12 @@ from typing import Any, Self, cast
 from ae.base import (                                               # type: ignore
     PY_EXT, PY_INIT, PY_MAIN, UNSET,
     defuse, dummy_function, env_str, mask_secrets, norm_path,
-    os_path_abspath, os_path_basename, os_path_dirname, os_path_isfile, os_path_join, os_path_splitext,
+    os_path_abspath, os_path_basename, os_path_dirname, os_path_isdir, os_path_isfile, os_path_join, os_path_splitext,
     pep8_format, read_file, UnsetType)
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.15'
+__version__ = '0.3.16'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -264,6 +264,16 @@ SKIPPED_MODULES = ('ae.base', 'ae.system', 'ae.files', 'ae.paths', 'ae.dynamicod
 
 EnvVarsType = MutableMapping[str, str]               #: environment variables dict/mapping
 EnvVarsLateResolvedType = dict[str, list[tuple[str, str, str, str]]]     #: mapping of DOTENV_VAR_IN_VAL_MATCHER results
+
+
+def active_venv() -> str:
+    """ determine the virtual environment that is currently active.
+
+    .. hint:: the current venv gets set via `data:`os.environ` on start of this Python app or by :func:`activate_venv`.
+
+    :return:                    the name of the currently active venv.
+    """
+    return norm_path(os.getenv('VIRTUAL_ENV', "")).split("/")[-1]   # normalize path for bash-emulation under MS Windows
 
 
 def app_name_guess() -> str:
@@ -908,6 +918,42 @@ def sys_env_text(ind_ch: str = " ", ind_len: int = 12, key_ch: str = "=", key_le
     text = os.linesep.join([f"{ind:{ind_ch}>{ind_len}}{key:{key_ch}<{key_len}}{val}" for key, val in sed.items()])
 
     return text
+
+
+def venv_bin_path(venv_name: str = "") -> str:
+    """ determine the absolute bin/executables folder path of a virtual pyenv environment.
+
+    :param venv_name:           the name of the venv. if not specified, then the venv name will be determined from the
+                                first found ``.python-version`` file, starting in the current working directory (cwd)
+                                and up to 5 parent directories above. if no ``.python-version`` file could be found
+                                then the name of the currently active venv will be used (via the function
+                                :func:`active_venv` respectively the ``VIRTUAL_ENV`` shell environment variable).
+    :return:                    absolute path of the "bin" folder in the specified/determined virtual environment or
+                                an empty string if pyenv is not installed or no venv name or bin folder could be found.
+
+                                .. note::
+                                    under Windows/win32 the base name of the returned path is 'Scripts' (not 'bin'), and
+                                    some executables may have a file extension (e.g., activate.bat and python.exe).
+                                    ensures "/" path separators to work properly in WSL/bash-emulation under MS Windows.
+    """
+    venv_root = os.getenv('PYENV_ROOT')
+    if not venv_root:   # pyenv is not installed
+        return ""
+
+    if not venv_name:
+        loc_env_file = '.python-version'
+        for _ in range(6):
+            if os_path_isfile(loc_env_file):
+                venv_name = read_file(loc_env_file).splitlines()[0]
+                break
+            loc_env_file = ".." + "/" + loc_env_file
+        else:
+            venv_name = active_venv()
+            if not venv_name:
+                return ""
+
+    bin_path = os_path_join(venv_root, 'versions', venv_name, 'Scripts' if sys.platform == "win32" else 'bin')
+    return bin_path.replace("\\", "/") if os_path_isdir(bin_path) else ""
 
 
 class PyMo(ErrorMsgMixin):
