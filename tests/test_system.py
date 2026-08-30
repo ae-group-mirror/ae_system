@@ -8,6 +8,7 @@ import warnings
 from configparser import ConfigParser
 from types import ModuleType
 from typing import cast
+from unittest.mock import patch
 
 import pytest
 
@@ -21,12 +22,12 @@ from ae.base import (
 # noinspection PyProtectedMember
 from ae.system import (
     APP_BUILD_CFG_FILENAME, DOTENV_FILENAME, DOTENV_VAR_IN_VAL_MATCHER, PYPI_PACKAGE_NAMES,
-    app_name_guess, build_config_variable_values, full_stack_trace, instantiate_config_parser,
+    active_venv, app_name_guess, build_config_variable_values, full_stack_trace, instantiate_config_parser,
     late_env_var_resolver, load_dotenvs, load_env_var_defaults, main_file_paths_parts,
     module_attr, module_find, module_load, module_file_path, norm_pip_name,
     os_host_name, os_local_ip, _os_platform, os_user_name,
     parse_dotenv, project_main_file,
-    stack_frames, stack_var, stack_vars, sys_env_dict, sys_env_text,
+    stack_frames, stack_var, stack_vars, sys_env_dict, sys_env_text, venv_bin_path,
     PyMo)
 
 
@@ -1131,6 +1132,32 @@ class TestStackHelpers:
 
         glo, loc, deep = stack_vars(min_depth=2, find_name='module_test_var')    # min_depth needed for this stack frame
         assert glo.get('module_test_var') is None
+
+
+class TestVenv:     # venv tests that are running also on the repo/CI host
+    def test_active_venv(self):
+        assert not bool(active_venv()) == 'CI_PROJECT_ID' in os.environ      # active_venv()=='' on gitlab CI
+
+    def test_venv_bin_path(self):
+        with (patch('ae.system.os_path_isfile', return_value=True),
+              patch('ae.system.read_file', return_value='tst_venv_name'),
+              patch('ae.system.os_path_isdir', return_value=True)):
+            # noinspection PyTypeChecker
+            bin_path = os_path_join(
+                os.getenv('PYENV_ROOT'), "versions", 'tst_venv_name', 'Scripts' if sys.platform == "win32" else 'bin'
+            ).replace("\\", "/")
+            # noinspection PyTypeChecker
+            assert venv_bin_path().endswith(bin_path)
+
+    def test_venv_bin_path_if_pyenv_is_not_installed(self, monkeypatch):
+        # patch activa_venv() and os_path_isfile('.python-version') to simulate not installed pyenv on local machine
+        with (patch('ae.system.active_venv', return_value=""),
+              patch('ae.system.os_path_isfile', return_value=False)):
+            assert venv_bin_path() == ""
+
+            monkeypatch.delenv('PYENV_ROOT', raising=False)
+
+            assert venv_bin_path() == ""
 
 
 class TestPyMo:
