@@ -48,6 +48,7 @@ setup_kwargs: dict[str, Any] = {
         ],
     },
     'install_requires': [
+        'pyjnius',
         'ae_base',
         'ae_app_log',
     ],
@@ -75,7 +76,7 @@ setup_kwargs: dict[str, Any] = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_system',
-    'version': '0.3.16',
+    'version': '0.3.17',
     'zip_safe': True,
 }
 

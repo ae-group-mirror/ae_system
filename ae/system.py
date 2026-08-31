@@ -22,8 +22,8 @@ useful helper functions to inspect the operating system:
 * :func:`os_user_name`: determines the current logged-in user's name.
 
 
-manage environment variables & `.env` files
--------------------------------------------
+manage OS environment variables & `.env` files
+----------------------------------------------
 
 * :func:`parse_dotenv`: parses a `.env` file and returns its key-value pairs as a dictionary.
 * :func:`late_env_var_resolver`: substitutes environment variables within the value of other environment variables.
@@ -33,6 +33,22 @@ manage environment variables & `.env` files
   variables.
 * :func:`sys_env_dict`: returns a dictionary containing the most important Python runtime OS environment values.
 * :func:`sys_env_text`: compiles a formatted text block with system environment information, useful for logging.
+
+
+Python virtual environment helpers
+----------------------------------
+
+Python virtual environment core helpers working for standard virtual environments (venv, virtualenv, inclusive
+local .venv-folders), for pyenv, Miniconda, Conda and for tools like Poetry, Pipenv and uv.
+
+* :func:`active_venv`: determines the name of the currently active Python virtual environment.
+* :func:`venv_bin_path`: determines the bin/scripts path of a Python virtual environment.
+* :func:`venv_prefix`: determine the folder path of the prefix/root name of the currently active
+  Python virtual environment.
+
+.. hint::
+    more helpers related to Python virtual environments, like :func:`~aedev.commands.activate_venv` - in order
+    to activate one, are provided by the module :mod:`aedev.commands`.
 
 
 application & project helpers
@@ -87,6 +103,7 @@ an instance of the class :class:`PyMo` is representing a Python module/package, 
 """
 # pylint: disable=too-many-lines
 import getpass
+import glob
 import importlib
 import importlib.abc
 import importlib.util
@@ -110,12 +127,12 @@ from typing import Any, Self, cast
 from ae.base import (                                               # type: ignore
     PY_EXT, PY_INIT, PY_MAIN, UNSET,
     defuse, dummy_function, env_str, mask_secrets, norm_path,
-    os_path_abspath, os_path_basename, os_path_dirname, os_path_isdir, os_path_isfile, os_path_join, os_path_splitext,
-    pep8_format, read_file, UnsetType)
+    os_path_abspath, os_path_basename, os_path_dirname, os_path_expanduser, os_path_isdir, os_path_isfile, os_path_join,
+    os_path_splitext, pep8_format, read_file, UnsetType)
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.16'
+__version__ = '0.3.17'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -267,13 +284,14 @@ EnvVarsLateResolvedType = dict[str, list[tuple[str, str, str, str]]]     #: mapp
 
 
 def active_venv() -> str:
-    """ determine the virtual environment that is currently active.
+    """ determine the name of the Python virtual environment that is currently active (if available).
 
-    .. hint:: the current venv gets set via `data:`os.environ` on start of this Python app or by :func:`activate_venv`.
-
-    :return:                    the name of the currently active venv.
+    :return:                    the name of the currently active venv or an empty string if no venv is active/available.
     """
-    return norm_path(os.getenv('VIRTUAL_ENV', "")).split("/")[-1]   # normalize path for bash-emulation under MS Windows
+    venv = venv_prefix()
+    if venv:
+        return venv.rstrip("/").split("/")[-1]
+    return os.getenv('CONDA_DEFAULT_ENV', "")
 
 
 def app_name_guess() -> str:
@@ -920,40 +938,97 @@ def sys_env_text(ind_ch: str = " ", ind_len: int = 12, key_ch: str = "=", key_le
     return text
 
 
-def venv_bin_path(venv_name: str = "") -> str:
-    """ determine the absolute bin/executables folder path of a virtual pyenv environment.
+def venv_bin_path(venv_name: str = "") -> str:      # pylint: disable=too-many-branches
+    """ determine the absolute bin/executables folder path of any Python virtual environment.
 
     :param venv_name:           the name of the venv. if not specified, then the venv name will be determined from the
-                                first found ``.python-version`` file, starting in the current working directory (cwd)
-                                and up to 5 parent directories above. if no ``.python-version`` file could be found
-                                then the name of the currently active venv will be used (via the function
-                                :func:`active_venv` respectively the ``VIRTUAL_ENV`` shell environment variable).
-    :return:                    absolute path of the "bin" folder in the specified/determined virtual environment or
-                                an empty string if pyenv is not installed or no venv name or bin folder could be found.
+                                first one found, starting in the current working directory (cwd) and up to 2 parent
+                                directories above. if this search did find neither a pyenv ``.python-version`` file,
+                                then the name of the currently active venv will be used (determined via the
+                                function :func:`active_venv`).
+    :return:                    absolute path of the bin/Scripts folder of the specified/determined virtual environment
+                                or an empty string if no venv could be found with the specified/determined name.
 
                                 .. note::
                                     under Windows/win32 the base name of the returned path is 'Scripts' (not 'bin'), and
                                     some executables may have a file extension (e.g., activate.bat and python.exe).
                                     ensures "/" path separators to work properly in WSL/bash-emulation under MS Windows.
     """
-    venv_root = os.getenv('PYENV_ROOT')
-    if not venv_root:   # pyenv is not installed
-        return ""
+    on_win = sys.platform == 'win32'
 
-    if not venv_name:
-        loc_env_file = '.python-version'
-        for _ in range(6):
-            if os_path_isfile(loc_env_file):
-                venv_name = read_file(loc_env_file).splitlines()[0]
-                break
-            loc_env_file = ".." + "/" + loc_env_file
+    if not venv_name:   # detect current virtual environment name from the cwd or above, if no venv name got specified
+        loc_path = "."
+        for _ in range(3):
+            env_file = os_path_join(loc_path, '.python-version')    # pyenv
+            if os_path_isfile(env_file):
+                venv_name = read_file(env_file).splitlines()[0].strip()
+                if venv_name:
+                    break
+            loc_path = os_path_join("..", loc_path)
         else:
             venv_name = active_venv()
-            if not venv_name:
-                return ""
 
-    bin_path = os_path_join(venv_root, 'versions', venv_name, 'Scripts' if sys.platform == "win32" else 'bin')
-    return bin_path.replace("\\", "/") if os_path_isdir(bin_path) else ""
+    chk_dirs: list[tuple[str, ...]] = []
+    if venv_name:
+        env_root = os.getenv('PYENV_ROOT')                          # pyenv ==os_path_expanduser('~/.pyenv')
+        if env_root:
+            chk_dirs.append((env_root, 'versions', venv_name))
+
+        env_root = os.getenv('WORKON_HOME')                         # virtualenvwrapper
+        if env_root:
+            chk_dirs.append((env_root, venv_name))
+
+        env_root = os.getenv('CONDA_ROOT')                          # Conda ==os_path_expanduser('~/miniconda3')
+        if env_root:
+            chk_dirs.append((env_root, 'envs', venv_name))
+        env_root = os.getenv('CONDA_ENVS_PATH')                     # explicit Conda envs dir
+        if env_root:
+            chk_dirs.append((env_root, venv_name))
+        env_root = os.getenv('CONDA_PREFIX')                        # derive envs-root from active env
+        if env_root:
+            chk_dirs.append((env_root, venv_name))
+        chk_dirs.append((os_path_expanduser('~/.conda/envs'), venv_name))
+        chk_dirs.append((os_path_expanduser('~/anaconda3/envs'), venv_name))
+        chk_dirs.append((os_path_expanduser('~/miniconda3/envs'), venv_name))
+        if venv_name == 'base' or venv_name == os.getenv('CONDA_DEFAULT_ENV'):
+            env_root = os.getenv('CONDA_ROOT') or os.getenv('CONDA_PREFIX')
+            if env_root:
+                if os_path_basename(os_path_dirname(env_root)) == 'envs':
+                    # if CONDA_PREFIX currently points into an envs/<venv_name> folder, climb back to the root
+                    env_root = os_path_dirname(os_path_dirname(env_root))
+                chk_dirs.append((env_root, ))
+
+        # poetry venvs get a hash suffix on the venv_name, e.g. "<name>-XXXXXXXX-py3.11"
+        cache_dir = (os.path.expandvars(r'%APPDATA%\pypoetry\virtualenvs') if on_win else
+                     os_path_expanduser('~/.cache/pypoetry/virtualenvs'))
+        for match in glob.glob(os_path_join(cache_dir, venv_name + '*')):
+            chk_dirs.append((match, ))
+
+    # last fallback: plain venv/virtualenv folders, searched in cwd and up to 2 parent directories
+    for loc_path in ((venv_name, ) if venv_name else ()) + ('.venv', 'venv', 'env', '.env'):
+        for _ in range(3):
+            chk_dirs.append((loc_path, ))
+            loc_path = os_path_join("..", loc_path)
+
+    bin_dir = 'Scripts' if on_win else 'bin'
+    for path_parts in chk_dirs:
+        bin_path = os_path_join(*path_parts, bin_dir)
+        if os_path_isdir(bin_path):
+            return norm_path(bin_path)
+
+    return ""
+
+
+def venv_prefix() -> str:
+    """ determine the folder path of the prefix/root name of the currently active Python virtual environment.
+
+    :return:                    normalized prefix folder path of the currently active venv
+                                or an empty string if no venv is active/available.
+    """
+    venv = (os.getenv('VIRTUAL_ENV')
+            or os.getenv('CONDA_PREFIX')
+            or (sys.prefix if sys.base_prefix != sys.prefix else ""))
+    return norm_path(venv) if venv else ""   # normalize found path, also for bash-emulation under MS Windows
 
 
 class PyMo(ErrorMsgMixin):

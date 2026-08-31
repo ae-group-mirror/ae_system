@@ -1,3 +1,4 @@
 # runtime dependencies of the ae.system project
+pyjnius     # only for Android
 ae_base
 ae_app_log
