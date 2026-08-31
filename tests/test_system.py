@@ -16,7 +16,8 @@ from tests.conftest import skip_gitlab_ci
 
 from ae.base import (
     DEF_PROJECT_PARENT_FOLDER, PY_EXT, PY_INIT, PY_MAIN, TESTS_FOLDER, UNSET,
-    norm_path, os_path_basename, os_path_dirname, os_path_isdir, os_path_join, url_failure, write_file)
+    in_wd, norm_path, os_path_basename, os_path_dirname, os_path_isdir, os_path_join,
+    read_file, url_failure, write_file)
 
 
 # noinspection PyProtectedMember
@@ -27,7 +28,7 @@ from ae.system import (
     module_attr, module_find, module_load, module_file_path, norm_pip_name,
     os_host_name, os_local_ip, _os_platform, os_user_name,
     parse_dotenv, project_main_file,
-    stack_frames, stack_var, stack_vars, sys_env_dict, sys_env_text, venv_bin_path,
+    stack_frames, stack_var, stack_vars, sys_env_dict, sys_env_text, venv_bin_path, venv_prefix,
     PyMo)
 
 
@@ -51,6 +52,8 @@ for _level in range(DOTENV_DIR_RANGE):
         DOTENV_LATE_VALUES[_level] = DOTENV_LATE_VAL_PRE + "".join(
                 DOTENV_LATE_VALUES[_var_level] for _var_level in range(_level) if _var_level in DOTENV_FULL_DIRS
             ) + "  " + str(_level)
+
+bin_dir = 'Scripts' if sys.platform == 'win32' else 'bin'
 
 
 @pytest.fixture
@@ -1134,17 +1137,64 @@ class TestStackHelpers:
         assert glo.get('module_test_var') is None
 
 
-class TestVenv:     # venv tests that are running also on the repo/CI host
+class TestVenvCI:     # venv tests that are running also on the repo/CI host for full test coverage
     def test_active_venv(self):
-        assert not bool(active_venv()) == 'CI_PROJECT_ID' in os.environ      # active_venv()=='' on gitlab CI
+        with (patch('ae.system.os.getenv', return_value=""),
+              patch('ae.system.sys.prefix', new=sys.base_prefix)):
+            assert active_venv() == ""
+
+        with patch('ae.system.os.getenv', return_value='venv_tst_nam'):
+            assert active_venv() == 'venv_tst_nam'
+
+        with patch('ae.system.os.getenv', return_value='/path/to/venv_tst_nam/'):
+            assert active_venv() == 'venv_tst_nam'
+
+        with patch('ae.system.os.getenv', return_value='C:\\path/to\\venv_tst_nam\\'):
+            assert active_venv() == 'venv_tst_nam'
+
+    @patch('ae.system.os_path_isfile', return_value=False)
+    @patch('ae.system.read_file', return_value='dummy_pyenv_nam')
+    @patch('ae.system.glob.glob', return_value=["dummy_path"])
+    @patch('ae.system.active_venv', return_value="dummy_venv_name")
+    def test_venv_bin_path(self, _active_venv, _glob, _read_file, _os_path_isfile):
+        assert venv_bin_path("invalid venv name:") == ""
+
+        with (patch('ae.system.os.getenv', return_value=""),
+              patch('ae.system.sys.prefix', new=sys.base_prefix)):
+            assert venv_bin_path() == ""
+
+        with patch('ae.system.os_path_isdir', return_value=True):
+            assert venv_bin_path()
+
+        with patch('ae.system.os.getenv', return_value='/path/to/venv_tst_nam/'):
+            assert venv_bin_path() == ""
+
+        with (patch('ae.system.os.getenv', return_value='dummy_pyenv_nam'),
+              patch('ae.system.os_path_isfile', return_value=True),
+              patch('ae.system.os_path_basename', return_value='envs'),
+              ):
+            assert venv_bin_path() == ""
+
+        assert venv_bin_path("venv_tst_name") == ""
+
+    def test_venv_prefix(self):
+        venv_prefix()
+
+
+@skip_gitlab_ci  # venv tests that run only on local machine with pyenv is not available on GitLab CI
+class TestVenvIntegration:
+    def test_integration_system_environment(self):
+        assert sys.platform != 'win32', "integration test need to run on Linux or MacOS"
+        assert os.getenv("PYENV_ROOT") and os.getenv("VIRTUAL_ENV"), "pyenv has to be installed and activated"
 
     def test_venv_bin_path(self):
-        with (patch('ae.system.os_path_isfile', return_value=True),
-              patch('ae.system.read_file', return_value='tst_venv_name'),
-              patch('ae.system.os_path_isdir', return_value=True)):
+        with (patch('ae.system.os.getenv', return_value="/home/usr_nam/.pyenv"),    # fake PYENV_ROOT fetch
+              patch('ae.system.os_path_isfile', return_value=True),                 # fake .python_version is found
+              patch('ae.system.read_file', return_value='tst_venv_name'),           # fake .python_version file content
+              patch('ae.system.os_path_isdir', return_value=True)):                 # fake existence of python bin dir
             # noinspection PyTypeChecker
             bin_path = os_path_join(
-                os.getenv('PYENV_ROOT'), "versions", 'tst_venv_name', 'Scripts' if sys.platform == "win32" else 'bin'
+                os.getenv('PYENV_ROOT'), "versions", 'tst_venv_name', 'Scripts' if sys.platform == "win32" else bin_dir
             ).replace("\\", "/")
             # noinspection PyTypeChecker
             assert venv_bin_path().endswith(bin_path)
@@ -1158,6 +1208,51 @@ class TestVenv:     # venv tests that are running also on the repo/CI host
             monkeypatch.delenv('PYENV_ROOT', raising=False)
 
             assert venv_bin_path() == ""
+
+    def test_venv_bin_path_ae_shell(self):
+        act_env = active_venv()
+
+        assert venv_bin_path(venv_name=act_env).startswith(os.getenv('PYENV_ROOT', "failure: pyenv is not installed"))
+        assert venv_bin_path(venv_name=act_env).endswith(os_path_join(act_env, bin_dir))
+
+        with patch('ae.system.os_path_isfile', return_value=False):
+            assert venv_bin_path().startswith(os.getenv('PYENV_ROOT', "install pyenv will fix this test"))
+            assert venv_bin_path().endswith(os_path_join(act_env, bin_dir))
+
+        with (patch('ae.system.os_path_isfile', return_value=False),
+              patch('ae.system.active_venv', return_value="")):
+            assert venv_bin_path() == ""
+
+        filed_venv = read_file('.python-version').splitlines()[0]
+        assert venv_bin_path().startswith(os.getenv('PYENV_ROOT', "pyenv is needed for this test"))
+        assert venv_bin_path().endswith(os_path_join(filed_venv, bin_dir))
+
+        any_venv = 'any_tst_venv_name'
+        with (patch('ae.system.read_file', return_value=any_venv),
+              patch('ae.system.os_path_isdir', return_value=True)):
+            assert venv_bin_path().startswith(os.getenv('PYENV_ROOT', "install pyenv will fix this test"))
+            assert venv_bin_path().endswith(os_path_join(any_venv, bin_dir))
+
+    def test_venv_bin_path_with_python_version_file_in_parent_dirs(self, tmp_path):
+        any_venv = 'above_tst_venv_name'
+        write_file(os_path_join(str(tmp_path), '.python-version'), any_venv)
+        with in_wd(str(tmp_path)):
+            for dir_deepness in range(1, 3):
+                sub_dir = 'sub_dir' + str(dir_deepness)
+                os.mkdir(sub_dir)
+                os.chdir(sub_dir)
+
+                with patch('ae.system.os_path_isdir', return_value=True):
+                    assert venv_bin_path() == os_path_join(os.getenv('PYENV_ROOT', ""), 'versions', any_venv, bin_dir)
+
+    def test_venv_bin_path_errors(self, monkeypatch):
+        act_env = active_venv()
+
+        assert venv_bin_path(venv_name=act_env).startswith(os.getenv('PYENV_ROOT', "install pyenv to fix this test"))
+        assert venv_bin_path(venv_name=act_env).endswith(os_path_join(act_env, bin_dir))
+
+        monkeypatch.delenv('PYENV_ROOT', raising=False)
+        assert venv_bin_path() == ""
 
 
 class TestPyMo:

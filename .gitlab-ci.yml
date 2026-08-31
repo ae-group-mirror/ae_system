@@ -23,6 +23,7 @@ integrity:                      # run integrity tests
     - pip --version
     - >
       pip install --upgrade --force-reinstall --uploaded-prior-to=P9D
+      pyjnius
       anybadge
       flake8
       mypy
