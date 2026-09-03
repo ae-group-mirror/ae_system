@@ -41,14 +41,10 @@ Python virtual environment helpers
 Python virtual environment core helpers working for standard virtual environments (venv, virtualenv, inclusive
 local .venv-folders), for pyenv, Miniconda, Conda and for tools like Poetry, Pipenv and uv.
 
-* :func:`active_venv`: determines the name of the currently active Python virtual environment.
-* :func:`venv_bin_path`: determines the bin/scripts path of a Python virtual environment.
-* :func:`venv_prefix`: determine the folder path of the prefix/root name of the currently active
-  Python virtual environment.
+* :func:`os_env_venv`: determines the id/name of the currently Python virtual environment (VENV) set in the OS env vars.
+* :func:`venv_prefix`: determine the folder path of the prefix/root name of the currently set VENV in the OS env vars.
 
-.. hint::
-    more helpers related to Python virtual environments, like :func:`~aedev.commands.activate_venv` - in order
-    to activate one, are provided by the module :mod:`aedev.commands`.
+.. hint:: more helpers related to Python virtual environments are provided by the module :mod:`aedev.commands`.
 
 
 application & project helpers
@@ -103,7 +99,6 @@ an instance of the class :class:`PyMo` is representing a Python module/package, 
 """
 # pylint: disable=too-many-lines
 import getpass
-import glob
 import importlib
 import importlib.abc
 import importlib.util
@@ -127,12 +122,13 @@ from typing import Any, Self, cast
 from ae.base import (                                               # type: ignore
     PY_EXT, PY_INIT, PY_MAIN, UNSET,
     defuse, dummy_function, env_str, mask_secrets, norm_path,
-    os_path_abspath, os_path_basename, os_path_dirname, os_path_expanduser, os_path_isdir, os_path_isfile, os_path_join,
-    os_path_splitext, pep8_format, read_file, UnsetType)
+    os_path_abspath, os_path_basename, os_path_dirname, os_path_isfile, os_path_join, os_path_splitext,
+    pep8_format, read_file,
+    UnsetType)
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.17'
+__version__ = '0.3.18'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -283,17 +279,6 @@ EnvVarsType = MutableMapping[str, str]               #: environment variables di
 EnvVarsLateResolvedType = dict[str, list[tuple[str, str, str, str]]]     #: mapping of DOTENV_VAR_IN_VAL_MATCHER results
 
 
-def active_venv() -> str:
-    """ determine the name of the Python virtual environment that is currently active (if available).
-
-    :return:                    the name of the currently active venv or an empty string if no venv is active/available.
-    """
-    venv = venv_prefix()
-    if venv:
-        return venv.rstrip("/").split("/")[-1]
-    return os.getenv('CONDA_DEFAULT_ENV', "")
-
-
 def app_name_guess() -> str:
     """ guess/try to determine the name of the currently running app (w/o assessing not yet initialized app instance).
 
@@ -435,7 +420,7 @@ def load_dotenvs(from_module_path: bool = False):
                                 call this function from the main module of project/app.
 
     .. note::
-        only variables that are not already defined in the OS environment variables mapping :data:`os.environ` will be
+        only variables that are not already defined in the OS environment variables mapping :attr:`os.environ` will be
         loaded/added. variables will be loaded first from the first ``.env`` file found in or above the current working
         directory, while the variable values in the deeper situated files are overwriting the values defined in the
         ``.env`` files situated in the above folders.
@@ -452,14 +437,14 @@ def load_env_var_defaults(start_dir: str, env_vars: EnvVarsType) -> EnvVarsType:
 
     :param start_dir:           folder to start search of an ``.env`` file, if not found, then also checks the parent
                                 folder. if an ``.env `` file got found, then put their shell environment variable values
-                                into the  specified :paramref:`~load_env_var_defaults.env_vars` mapping if they are not
+                                into the  specified :paramref:`.env_vars` mapping if they are not
                                 already there. after processing the first ``.env`` file, it repeats to check for
                                 further ``.env`` files in the parent folder to load them too, until either detecting
                                 a folder without an ``.env`` file or until an ``.env`` got loaded from the root folder.
     :param env_vars:            environment variables mapping to be amended with env variable values from any
-                                found ``.env`` file. pass Python's :data:`os.environ` to amend this mapping directly
+                                found ``.env`` file. pass Python's :attr:`os.environ` to amend this mapping directly
                                 with all the already not declared environment variables.
-    :return:                    env var names (keys) and values added to :paramref:`~load_env_var_defaults.env_vars`.
+    :return:                    env var names (keys) and values added to :paramref:`.env_vars`.
     """
     start_dir = norm_path(start_dir)
     file_path = os_path_join(start_dir, DOTENV_FILENAME)
@@ -608,6 +593,27 @@ def norm_pip_name(pip_name: str) -> str:
     :return:                    normalized project name, in lower case and all dots&underscores replaced by hyphens.
     """
     return pip_name.replace('.', '-').replace('_', '-').lower()
+
+
+def os_env_venv() -> str:
+    """ determine the id of the Python virtual environment (VENV) that is currently set in the OS environment variables.
+
+    :return:                    the name/id of the currently set VENV in the OS env vars (:attr:`os.environ`)
+                                or an empty string if no VENV is set in the OS environment variables.
+
+                                .. note::
+                                    this function is only checking the OS env vars and is not using :attr:`sys.prefix`
+                                    or the expression ``sys.prefix == sys.base_prefix`` to determine if a VENV got set.
+
+                                .. hint::
+                                    if the Conda `base` VENV got set in the OS env vars, then the basename of the env
+                                    var 'CONDA_PREFIX' ('anaconda3' or 'miniconda3') will be returned as VENV id. the
+                                    env var `CONDA_DEFAULT_ENV` has in this case set the value 'base', and the path in
+                                    :data:`sys.prefix` could be different to the value of 'CONDA_PREFIX' if the
+                                    `base` VENV got only set within the OS environment variables.
+    """
+    path = venv_prefix()
+    return os_path_basename(path) if path else ""
 
 
 def os_host_name() -> str:
@@ -811,7 +817,7 @@ def project_main_file(import_name: str, project_path: str = "") -> str:
 
 
 def stack_frames(depth: int = 1) -> Generator:  # Generator[frame, None, None]
-    """ generator returning the call stack frame from the level given in :paramref:`~stack_frames.depth`.
+    """ generator returning the call stack frame from the level given in :paramref:`.depth`.
 
     :param depth:               the stack level to start; the first returned frame by this generator. the default value
                                 (1) refers to the next deeper stack frame, respectively the one of the caller of this
@@ -853,7 +859,7 @@ def stack_vars(*skip_modules: str,
 
     :param skip_modules:        module names to skip (def=see :data:`SKIPPED_MODULES` module constant).
     :param find_name:           if passed, then the returned stack frame must contain a variable with the passed name.
-    :param scope:               scope to search the variable name passed via :paramref:`~stack_vars.find_name`. pass
+    :param scope:               scope to search the variable name passed via :paramref:`.find_name`. pass
                                 'locals' to only search for local variables (ignoring globals) or 'globals' to only
                                 check for global variables (ignoring locals). passing an empty string will find the
                                 variable within either locals or globals.
@@ -861,9 +867,9 @@ def stack_vars(*skip_modules: str,
                                 deeper stack frame, respectively, to the caller of this function. pass 2 or a higher
                                 value if you want to get the variables from a deeper level in the call stack.
     :param max_depth:           the maximum depth in the call stack from which to return the variables. if the specified
-                                argument is not zero and no :paramref:`~stack_vars.skip_modules` are specified, then the
+                                argument is not zero and no :paramref:`.skip_modules` are specified, then the
                                 first deeper stack frame that is not within the default :data:`SKIPPED_MODULES` will be
-                                returned. if this argument and :paramref:`~stack_vars.find_name` get not passed,
+                                returned. if this argument and :paramref:`.find_name` get not passed,
                                 then the variables of the top stack frame will be returned.
     :return:                    tuple of the global and local variable dicts and the depth in the call stack.
     """
@@ -907,7 +913,7 @@ def sys_env_dict() -> dict[str, Any]:
         'host name': os_host_name(),
         'device id': os_device_id,
         'app_name_guess': app_name_guess(),
-        'os env': mask_secrets(os.environ.copy()),
+        'OS env': mask_secrets(os.environ.copy()),
     }
 
     if sed['frozen']:
@@ -938,97 +944,15 @@ def sys_env_text(ind_ch: str = " ", ind_len: int = 12, key_ch: str = "=", key_le
     return text
 
 
-def venv_bin_path(venv_name: str = "") -> str:      # pylint: disable=too-many-branches
-    """ determine the absolute bin/executables folder path of any Python virtual environment.
-
-    :param venv_name:           the name of the venv. if not specified, then the venv name will be determined from the
-                                first one found, starting in the current working directory (cwd) and up to 2 parent
-                                directories above. if this search did find neither a pyenv ``.python-version`` file,
-                                then the name of the currently active venv will be used (determined via the
-                                function :func:`active_venv`).
-    :return:                    absolute path of the bin/Scripts folder of the specified/determined virtual environment
-                                or an empty string if no venv could be found with the specified/determined name.
-
-                                .. note::
-                                    under Windows/win32 the base name of the returned path is 'Scripts' (not 'bin'), and
-                                    some executables may have a file extension (e.g., activate.bat and python.exe).
-                                    ensures "/" path separators to work properly in WSL/bash-emulation under MS Windows.
-    """
-    on_win = sys.platform == 'win32'
-
-    if not venv_name:   # detect current virtual environment name from the cwd or above, if no venv name got specified
-        loc_path = "."
-        for _ in range(3):
-            env_file = os_path_join(loc_path, '.python-version')    # pyenv
-            if os_path_isfile(env_file):
-                venv_name = read_file(env_file).splitlines()[0].strip()
-                if venv_name:
-                    break
-            loc_path = os_path_join("..", loc_path)
-        else:
-            venv_name = active_venv()
-
-    chk_dirs: list[tuple[str, ...]] = []
-    if venv_name:
-        env_root = os.getenv('PYENV_ROOT')                          # pyenv ==os_path_expanduser('~/.pyenv')
-        if env_root:
-            chk_dirs.append((env_root, 'versions', venv_name))
-
-        env_root = os.getenv('WORKON_HOME')                         # virtualenvwrapper
-        if env_root:
-            chk_dirs.append((env_root, venv_name))
-
-        env_root = os.getenv('CONDA_ROOT')                          # Conda ==os_path_expanduser('~/miniconda3')
-        if env_root:
-            chk_dirs.append((env_root, 'envs', venv_name))
-        env_root = os.getenv('CONDA_ENVS_PATH')                     # explicit Conda envs dir
-        if env_root:
-            chk_dirs.append((env_root, venv_name))
-        env_root = os.getenv('CONDA_PREFIX')                        # derive envs-root from active env
-        if env_root:
-            chk_dirs.append((env_root, venv_name))
-        chk_dirs.append((os_path_expanduser('~/.conda/envs'), venv_name))
-        chk_dirs.append((os_path_expanduser('~/anaconda3/envs'), venv_name))
-        chk_dirs.append((os_path_expanduser('~/miniconda3/envs'), venv_name))
-        if venv_name == 'base' or venv_name == os.getenv('CONDA_DEFAULT_ENV'):
-            env_root = os.getenv('CONDA_ROOT') or os.getenv('CONDA_PREFIX')
-            if env_root:
-                if os_path_basename(os_path_dirname(env_root)) == 'envs':
-                    # if CONDA_PREFIX currently points into an envs/<venv_name> folder, climb back to the root
-                    env_root = os_path_dirname(os_path_dirname(env_root))
-                chk_dirs.append((env_root, ))
-
-        # poetry venvs get a hash suffix on the venv_name, e.g. "<name>-XXXXXXXX-py3.11"
-        cache_dir = (os.path.expandvars(r'%APPDATA%\pypoetry\virtualenvs') if on_win else
-                     os_path_expanduser('~/.cache/pypoetry/virtualenvs'))
-        for match in glob.glob(os_path_join(cache_dir, venv_name + '*')):
-            chk_dirs.append((match, ))
-
-    # last fallback: plain venv/virtualenv folders, searched in cwd and up to 2 parent directories
-    for loc_path in ((venv_name, ) if venv_name else ()) + ('.venv', 'venv', 'env', '.env'):
-        for _ in range(3):
-            chk_dirs.append((loc_path, ))
-            loc_path = os_path_join("..", loc_path)
-
-    bin_dir = 'Scripts' if on_win else 'bin'
-    for path_parts in chk_dirs:
-        bin_path = os_path_join(*path_parts, bin_dir)
-        if os_path_isdir(bin_path):
-            return norm_path(bin_path)
-
-    return ""
-
-
 def venv_prefix() -> str:
-    """ determine the folder path of the prefix/root name of the currently active Python virtual environment.
+    """ determine the path of the VENV prefix/root folder which is currently set in the OS environment vars.
 
-    :return:                    normalized prefix folder path of the currently active venv
-                                or an empty string if no venv is active/available.
+    :return:                    normalized prefix/root folder path of the currently set VENV (Python virtual
+                                environment) in the OS environment variables (:attr:`os.environ`),
+                                or an empty string if no VENV is set in the OS env vars.
     """
-    venv = (os.getenv('VIRTUAL_ENV')
-            or os.getenv('CONDA_PREFIX')
-            or (sys.prefix if sys.base_prefix != sys.prefix else ""))
-    return norm_path(venv) if venv else ""   # normalize found path, also for bash-emulation under MS Windows
+    venv_path = os.getenv('VIRTUAL_ENV') or os.getenv('CONDA_PREFIX')
+    return norm_path(venv_path) if venv_path else ""   # normalize found path, also for bash-emulation under win32
 
 
 class PyMo(ErrorMsgMixin):
