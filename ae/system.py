@@ -22,14 +22,14 @@ useful helper functions to inspect the operating system:
 * :func:`os_user_name`: determines the current logged-in user's name.
 
 
-manage OS environment variables & `.env` files
-----------------------------------------------
+manage OS environment variables & ``.env`` files
+------------------------------------------------
 
-* :func:`parse_dotenv`: parses a `.env` file and returns its key-value pairs as a dictionary.
+* :func:`parse_dotenv`: parses a ``.env`` file and returns its key-value pairs as a dictionary.
 * :func:`late_env_var_resolver`: substitutes environment variables within the value of other environment variables.
-* :func:`load_dotenvs`: detects and loads all relevant `.env` files from the current working directory and optional
+* :func:`load_dotenvs`: detects and loads all relevant ``.env`` files from the current working directory and optional
   also from the main module's path.
-* :func:`load_env_var_defaults`: recursively searches parent directories for `.env` files and loads any undeclared
+* :func:`load_env_var_defaults`: recursively searches parent directories for ``.env`` files and loads any undeclared
   variables.
 * :func:`sys_env_dict`: returns a dictionary containing the most important Python runtime OS environment values.
 * :func:`sys_env_text`: compiles a formatted text block with system environment information, useful for logging.
@@ -128,7 +128,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.18'
+__version__ = '0.3.19'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
