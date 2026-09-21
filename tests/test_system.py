@@ -1,4 +1,5 @@
 """ ae.system unit tests. """
+import importlib
 import os
 import sys
 import tempfile
@@ -8,7 +9,7 @@ import warnings
 from configparser import ConfigParser
 from types import ModuleType
 from typing import cast
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -20,6 +21,7 @@ from ae.base import (
     url_failure, write_file)
 
 
+import ae.system  # to test global module variables (os_device_id) and to reimport ae.system for all supported platforms
 # noinspection PyProtectedMember
 from ae.system import (
     APP_BUILD_CFG_FILENAME, DOTENV_FILENAME, DOTENV_VAR_IN_VAL_MATCHER, PYPI_PACKAGE_NAMES,
@@ -157,6 +159,12 @@ class TestCommonHelpers:
 
     def test_os_local_ip(self):
         assert os_local_ip() or os_local_ip() == ""
+
+    def test_os_local_ip_err(self):
+        mock_sock = MagicMock()
+        mock_sock.getsockname.side_effect = Exception()
+        with patch('ae.system.socket.socket', return_value=mock_sock):
+            assert os_local_ip() == ""
 
     def test_os_platform_android(self):
         try:
@@ -893,6 +901,15 @@ class TestModuleHelpers:
         assert module_file_path() == __file__
         assert module_file_path(lambda: 0) == __file__
 
+    def test_module_file_path_with_mocked_stack_var(self):
+        with patch('ae.system.stack_var', return_value=""):
+            assert module_file_path() == __file__
+
+    def test_module_file_path_without_dunder_file_exception(self):
+        with (patch('ae.system.stack_var', return_value=""),
+              patch('ae.system.sys._getframe', side_effect=Exception())):
+            assert module_file_path() == ""
+
     def test_module_find_builtins(self):
         path_or_err = module_find('textwrap')
         assert isinstance(path_or_err, str)
@@ -916,10 +933,32 @@ class TestModuleHelpers:
 
         assert isinstance(mod_path, str)
 
+    def test_module_find_submodule_search_locations(self):
+        spec_mock = MagicMock()
+        spec_mock.origin = None
+        spec_mock.loader_state = None
+        spec_mock.submodule_search_locations = ['tst_file_path']
+        with patch('ae.system.importlib.util.find_spec', return_value=spec_mock):
+            assert module_find('import_name') == 'tst_file_path'
+
+    def test_module_find_with_module_path_not_found(self):
+        spec_mock = MagicMock()
+        spec_mock.origin = 'frozen'
+        spec_mock.loader_state = None
+        spec_mock.submodule_search_locations = None
+        with patch('ae.system.importlib.util.find_spec', return_value=spec_mock):
+            assert module_find('import_name') == [f"path not available for {spec_mock.origin + '-'}module import_name"]
+
     def test_module_load_builtins(self):
         assert isinstance(module_load('textwrap'), ModuleType)
         assert isinstance(module_load('os.path'), ModuleType)
         assert isinstance(module_load('os'), ModuleType)
+
+    def test_module_load_error(self):
+        with patch('ae.system.importlib.util.module_from_spec'):
+            err = module_load('os')
+            assert isinstance(err, list) and len(err) == 1
+            assert "is not of importlib.abs.loader" in err[0]
 
     def test_module_load_local_module(self, monkeypatch, tmp_path):
         module = "mod_2_tst"
@@ -996,6 +1035,72 @@ class TestModuleHelpers:
     def test_module_load_not_exists(self):
         assert (err_or_mod := module_load('not_existing_import_name'))
         assert isinstance(err_or_mod, list)
+
+
+class TestOsDeviceId:
+    @pytest.fixture(autouse=True)
+    def reset_module(self):
+        yield
+        importlib.reload(ae.system)
+
+    def test_os_device_id_for_android(self):
+        mock_jnius = MagicMock()
+        mock_class = MagicMock()
+        mock_class.getString.return_value = 'android_device_id'
+        mock_jnius.autoclass.side_effect = lambda name: mock_class if 'Settings' in name else MagicMock()
+        with (patch.dict('os.environ', {'ANDROID_ARGUMENT': '1'}),
+              patch.dict('sys.modules', {'jnius': mock_jnius})):
+            importlib.reload(ae.system)
+            assert ae.system.os_device_id == 'android_device_id'
+
+    def test_os_device_id_for_android_empty_and_exception(self):
+        mock_jnius = MagicMock()
+        mock_class = MagicMock()
+        mock_class.getString.return_value = ""  # empty device_name
+        mock_jnius.autoclass.side_effect = lambda name: mock_class if 'Settings' in name else MagicMock()
+        with (patch.dict('os.environ', {'ANDROID_ARGUMENT': '1'}),
+              patch('ae.system.platform.node', return_value='tst_default_id'),
+              patch.dict('sys.modules', {'jnius': mock_jnius})):
+            importlib.reload(ae.system)
+            assert ae.system.os_device_id == 'tst_default_id'
+
+        mock_jnius_exc = MagicMock()
+        mock_jnius_exc.autoclass.side_effect = Exception("Android API tst error")   # fallback to os_host_name()
+        with patch.dict('os.environ', {'ANDROID_ARGUMENT': '1'}), \
+             patch('ae.system.platform.node', return_value='tst_default_id'), \
+             patch.dict('sys.modules', {'jnius': mock_jnius_exc}):
+            importlib.reload(ae.system)
+            assert ae.system.os_device_id == 'tst_default_id'
+
+    def test_os_device_id_for_linux_and_mac(self):
+        with patch('ae.system.platform.node', return_value='tst_default_id'):
+            importlib.reload(ae.system)
+            assert ae.system.os_device_id == 'tst_default_id'   # defaults to os_host_name()/platform.node()
+
+    def test_os_device_id_for_win32(self):
+        with (patch('sys.platform', 'win32'),
+              patch.dict('os.environ', {'COMPUTERNAME': 'tst_name'})):
+            importlib.reload(ae.system)
+            assert ae.system.os_device_id == 'tst_name'
+
+    def test_os_device_id_for_win32_no_computername(self):
+        clean_env = {k: v for k, v in os.environ.items() if k != 'COMPUTERNAME'}
+        with (patch('sys.platform', 'win32'),
+              patch('ae.system.platform.node', return_value='tst_default_id'),
+              patch.dict('os.environ', clean_env, clear=True)):
+            importlib.reload(ae.system)
+            assert ae.system.os_device_id == 'tst_default_id'
+
+    def test_os_device_id_if_platform_node_fails(self):
+        mock_jnius = MagicMock()
+        mock_settings = MagicMock()
+        mock_settings.getString.return_value = ""                               # empty device name on Android
+        mock_jnius.autoclass.return_value = mock_settings
+        with (patch('ae.system.platform.node', return_value=""),                # empty device name on Linux/Mac
+              patch.dict('os.environ', {'COMPUTERNAME': ''}, clear=False),      # empty device name on Windows
+              patch.dict('sys.modules', {'jnius': mock_jnius})):
+            importlib.reload(ae.system)
+            assert ae.system.os_device_id == 'indeterminableHostName'
 
 
 class TestStackHelpers:

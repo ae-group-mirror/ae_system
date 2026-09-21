@@ -128,7 +128,7 @@ from ae.base import (                                               # type: igno
 from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.19'
+__version__ = '0.3.20'
 
 
 APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
@@ -354,12 +354,7 @@ def instantiate_config_parser() -> ConfigParser:
     case-sensitive config variable names and to use :class:`ExtendedInterpolation` as the interpolation argument.
     """
     cfg_parser = ConfigParser(allow_no_value=True, interpolation=ExtendedInterpolation())
-    # set optionxform to have case-sensitive var names (or use 'lambda option: option')
-    # mypy V 0.740 bug - see mypy issue #5062: adding pragma "type: ignore" breaks PyCharm (showing
-    # inspection warning "Non-self attribute could not be type-hinted"), but
-    # also cast(Callable[[Arg(str, 'option')], str], str) and # type: ... is not working
-    # (because Arg is not available in plain mypy, only in the extra mypy_extensions package)
-    setattr(cfg_parser, 'optionxform', str)
+    setattr(cfg_parser, 'optionxform', str)     # for case-sensitive var names (or use 'lambda option: option')
     return cfg_parser
 
 
@@ -453,12 +448,12 @@ def load_env_var_defaults(start_dir: str, env_vars: EnvVarsType) -> EnvVarsType:
 
     loaded_vars = {}
     late_resolved: EnvVarsLateResolvedType = {}
-    while os_path_isfile(file_path):
+    last_path = ""                  # prevent endless-loop for DOTENV_FILENAME in root dir
+    while os_path_isfile(file_path) and last_path != file_path:
         for var_nam, var_val in parse_dotenv(file_path, late_resolved, exclude_vars=env_vars).items():
             env_vars[var_nam] = loaded_vars[var_nam] = var_val
 
-        if os.sep not in file_path:
-            break           # pragma: no cover # prevent endless-loop for ``.env`` file in root dir (os.sep == "/")
+        last_path = file_path
         file_path = os_path_join(os_path_dirname(os_path_dirname(file_path)), DOTENV_FILENAME)
 
     late_env_var_resolver(env_vars, loaded_vars, late_resolved)
@@ -515,11 +510,11 @@ def module_file_path(local_object: Callable | None = None) -> str:
             return norm_path(file_path)
 
     file_path = stack_var('__file__')
-    if not file_path:                                   # pragma: no cover
+    if not file_path:
         try:
             # noinspection PyProtectedMember,PyUnresolvedReferences
             file_path = sys._getframe().f_back.f_code.co_filename   # type: ignore # pylint: disable=protected-access
-        except (AttributeError, Exception):                         # pylint: disable=broad-except # pragma: no cover
+        except (AttributeError, Exception):                         # pylint: disable=broad-except
             file_path = ""
     return file_path
 
@@ -539,13 +534,13 @@ def module_find(import_name: str) -> str | list[str]:
         elif spec.origin in (None, "", "built-in", "frozen"):
             if spec.loader_state and spec.loader_state.filename:
                 path = spec.loader_state.filename
-            elif spec.submodule_search_locations:           # pragma: no cover
+            elif spec.submodule_search_locations:
                 path = spec.submodule_search_locations[0]   # take 1st dir of Namespace package with multiple locations
             else:
-                errors.append(f"path not available for {spec.origin or ""} module {import_name}")  # pragma: no cover
+                errors.append(f"path not available for {spec.origin + '-' if spec.origin else ''}module {import_name}")
         else:
             path = spec.origin
-    except (ValueError, Exception) as exc:  # pragma: no cover # pylint: disable=broad-exception-caught
+    except (ValueError, Exception) as exc:  # pylint: disable=broad-exception-caught
         errors.append(f"find_spec({import_name=}) raised {exc=}")
 
     return errors or path
@@ -577,8 +572,8 @@ def module_load(import_name: str, path: str | UnsetType | None = UNSET) -> Modul
             if isinstance(spec.loader, importlib.abc.Loader) and isinstance(mod_ref, ModuleType):
                 spec.loader.exec_module(mod_ref)
             else:
-                errors.append(f"spec.loader ({type(spec.loader)=} is not of importlib.abs.loader")  # pragma: no cover
-        except (FileNotFoundError, Exception) as exc:   # pragma: no cover # pylint: disable=broad-exception-caught
+                errors.append(f"spec.loader ({type(spec.loader)=} is not of importlib.abs.loader")
+        except (FileNotFoundError, Exception) as exc:   # pylint: disable=broad-exception-caught
             errors.append(f"module_from_spec/exec_module({spec=}) raised {exc=}")
     else:
         errors.append(f"spec_from_file_location({import_name=}) could not load module at {path=}")
@@ -621,7 +616,7 @@ def os_host_name() -> str:
 
     :return:                    machine name string.
     """
-    return defuse(platform.node()) or "indeterminableHostName"
+    return defuse(platform.node()) or 'indeterminableHostName'
 
 
 # noinspection PyTypeChecker
@@ -638,7 +633,7 @@ def os_local_ip() -> str:
     try:
         socket1.connect(('10.255.255.255', 1))                      # doesn't even have to be reachable
         ip_address = socket1.getsockname()[0]
-    except (OSError, IOError, Exception):                           # pylint: disable=broad-except # pragma: no cover
+    except (OSError, IOError, Exception):                           # pylint: disable=broad-except
         # ConnectionAbortedError, ConnectionError, ConnectionRefusedError, ConnectionResetError inherit from OSError
         socket2 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
@@ -695,7 +690,7 @@ on MS Windows:
 on all other platforms:
     - socket.gethostname()
 """
-if os_platform == 'android':                                        # pragma: no cover
+if os_platform == 'android':
     # determine Android device id because os_host_name() returns mostly 'localhost' and not the user-definable device id
     from jnius import autoclass                                     # type: ignore
 
@@ -725,7 +720,7 @@ if os_platform == 'android':                                        # pragma: no
     shutil.copystat = dummy_function
 
 
-elif os_platform in ('win32', 'cygwin'):                            # pragma: no cover
+elif os_platform in ('win32', 'cygwin'):
     if _dev_id := os.environ.get('COMPUTERNAME'):
         os_device_id = defuse(_dev_id)
 
