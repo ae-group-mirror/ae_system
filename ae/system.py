@@ -53,12 +53,9 @@ application & project helpers
 functions to aid in application setup, configuration, and build introspection.
 
 * :func:`app_name_guess`: attempts to determine the name of the currently running application from its environment.
-* :func:`build_config_variable_values`: reads variable values from an APP_BUILD_CFG_FILENAME/`buildozer.spec` file.
+* :func:`build_config_variable_values`: reads variable values from a 'buildozer.spec' file.
 * :func:`instantiate_config_parser`: returns a `ConfigParser` instance pre-configured for case-sensitive keys and
   extended interpolation.
-* :func:`project_main_file`: determines the absolute path to the main module file of a project package (where the
-  `__version__` of the app|package is defined).
-* :func:`main_file_paths_parts`: returns a tuple of possible main/version file path names combinations of any project.
 
 
 modules and call stack inspection
@@ -84,26 +81,16 @@ dynamically inspect modules, execution frames, and variables on the call stack.
 system constants and classes
 ----------------------------
 
-* :data:`APP_BUILD_CFG_FILENAME`: default name for a build configuration file (buildozer.spec).
-* :data:`DOTENV_FILENAME`: default name for environment variable files (.env).
 * :data:`DOTENV_LINE_MATCHER`: compiled regular expression to parse a line of an OS environment file.
 * :data:`DOTENV_VAR_IN_VAL_MATCHER`: compiled regular expression to parse the value of an OS env variable.
-* :data:`PYPI_PACKAGE_NAMES`: irregular project/package names, not convertable from their import names.
 * :data:`SKIPPED_MODULES`: a tuple of module names to be ignored by stack inspection functions.
 
-an instance of the class :class:`PyMo` is representing a Python module/package, and provides:
-
-* project, namespace, module, package and portion names
-* project, module, package and portion paths
-* dynamic load of a code module or package
 """
-# pylint: disable=too-many-lines
 import getpass
 import importlib
 import importlib.abc
 import importlib.util
 import inspect
-import itertools
 import os
 import platform
 import re
@@ -117,23 +104,19 @@ from configparser import ConfigParser, ExtendedInterpolation
 from importlib.machinery import ModuleSpec
 from inspect import getinnerframes, getouterframes, getsourcefile
 from types import ModuleType
-from typing import Any, Self, cast
+from typing import Any, cast
 
 from ae.base import (                                               # type: ignore
-    PY_EXT, PY_INIT, PY_MAIN, UNSET,
+    UNSET,
     defuse, dummy_function, env_str, mask_secrets, norm_path,
     os_path_abspath, os_path_basename, os_path_dirname, os_path_isfile, os_path_join, os_path_splitext,
     pep8_format, read_file,
     UnsetType)
-from ae.app_log import ErrorMsgMixin                                # type: ignore
 
 
-__version__ = '0.3.20'
+__version__ = '0.3.21'
 
 
-APP_BUILD_CFG_FILENAME = 'buildozer.spec'               #: gui app build config file
-
-DOTENV_FILENAME = '.env'                                #: name of the file that declares shell/OS environment variables
 DOTENV_LINE_MATCHER = re.compile(r"""
     ^
     (?:export\s+)?              # optional export
@@ -163,115 +146,19 @@ DOTENV_VAR_IN_VAL_MATCHER = re.compile(r"""
 """ .env variable name expansion in variable value; allowing lowercase var names and shell var default value ops (see
 <https://www.gnu.org/software/bash/manual/bash.html#Shell-Parameter-Expansion-1>) """
 
-MODULE_NAME_SEPS = ('_', '.', '-')                      #: separators considered equivalent for comparison (:pep:`503`)
-MODULE_NAME_PATTERN = re.compile("[" + "".join(MODULE_NAME_SEPS) + "]+")  # escape hyphen/'\-' if not first/last chr
-
-PYPI_PACKAGE_NAMES = {
-    'absl': 'absl-py',
-    'airflow': 'apache-airflow',
-    'allauth': 'django-allauth',
-    'apt': 'python-apt',
-    'arango': 'python-arango',
-    'attr': 'attrs',
-    'Bio': 'biopython',
-    'bootstrap5': 'django-bootstrap5',
-    'bs4': 'beautifulsoup4',
-    'bson': 'pymongo',                                  # pymongo extension
-    'cassandra': 'cassandra-driver',
-    'cms': 'django-cms',
-    'consul': 'python-consul',
-    'corsheaders': 'django-cors-headers',
-    'crispy_forms': 'django-crispy-forms',
-    'crontab': 'python-crontab',
-    'Crypto': 'pycryptodome',
-    'cups': 'pycups',
-    'cv2': 'opencv-python',
-    'dateutil': 'python-dateutil',
-    'dbus': 'dbus-python',
-    'discord': 'discord.py',
-    'dns': 'dnspython',
-    'docx': 'python-docx',
-    'dotenv': 'python-dotenv',
-    'engineio': 'python-engineio',
-    'faiss': 'faiss-cpu',                               # alternativ faiss-gpu
-    'ffmpeg': 'ffmpeg-python',
-    'filer': 'django-filer',
-    'fitz': 'PyMuPDF',
-    'fpdf': 'fpdf2',
-    'gi': 'PyGObject',
-    'git': 'GitPython',
-    'github': 'PyGithub',
-    'gitlab': 'python-gitlab',
-    'gnupg': 'python-gnupg',
-    'googleapiclient': 'google-api-python-client',
-    'google.oauth2': 'google-auth',
-    'google.protobuf': 'protobuf',
-    'gridfs': 'pymongo',                                # pymongo extension
-    'gtk': 'PyGTK',
-    'haystack': 'django-haystack',
-    'igraph': 'python-igraph',
-    'jnius': 'pyjnius',
-    'jose': 'python-jose',
-    'jwt': 'PyJWT',
-    'kafka': 'kafka-python',
-    'ldap': 'python-ldap',
-    'Levenshtein': 'python-Levenshtein',
-    'magic': 'python-magic',
-    'memcache': 'python-memcached',
-    'menus': 'django-cms',                              # django-cms extension
-    'multipart': 'python-multipart',
-    'mysql': 'mysql-connector-python',
-    'MySQLdb': 'mysqlclient',
-    'nacl': 'PyNaCl',
-    'nmap': 'python-nmap',
-    'odf': 'odfpy',
-    'OpenGL': 'PyOpenGL',
-    'opensearchpy': 'opensearch-py',
-    'OpenSSL': 'pyOpenSSL',
-    'paho': 'paho-mqtt',
-    'parler': 'django-parler',
-    'PIL': 'pillow',
-    'playhouse': 'peewee',                              # peewee extension
-    'pptx': 'python-pptx',
-    'psycopg2': 'psycopg2-binary',
-    'pywt': 'PyWavelets',
-    'rest_framework': 'djangorestframework',
-    'RPi': 'RPi.GPIO',
-    'rtmidi': 'python-rtmidi',
-    'ruamel': 'ruamel.yaml',
-    'sekizai': 'django-sekizai',
-    'serial': 'pyserial',
-    'skimage': 'scikit-image',
-    'sklearn': 'scikit-learn',
-    'slugify': 'python-slugify',
-    'smbus': 'smbus2',
-    'snappy': 'python-snappy',
-    'socketio': 'python-socketio',
-    'speech_recognition': 'SpeechRecognition',
-    'storages': 'django-storages',
-    'telegram': 'python-telegram-bot',
-    'treebeard': 'django-treebeard',
-    'usb': 'pyusb',
-    'usb1': 'libusb1',
-    'vlc': 'python-vlc',
-    'websocket': 'websocket-client',
-    'whois': 'python-whois',
-    'win32api': 'pywin32',
-    'win32com': 'pywin32',
-    'wx': 'wxPython',
-    'xlib': 'python-xlib',
-    'yaml': 'PyYAML',
-    'zmq': 'pyzmq',
-}
-""" irregular project/package names; not convertable directly/only from their import names. """
-
-SKIPPED_MODULES = ('ae.base', 'ae.system', 'ae.files', 'ae.paths', 'ae.dynamicod',
-                   'ae.core', 'ae.console', 'ae.snell', 'ae.managed_files',
-                   'ae.gui', 'ae.gui.app', 'ae.gui.tours', 'ae.gui.utils',
-                   'ae.kivy', 'ae.kivy.apps', 'ae.kivy.behaviors', 'ae.kivy.i18n', 'ae.kivy.tours', 'ae.kivy.widgets',
-                   'ae.enaml_app', 'ae.toga_app', 'ae.pyglet_app', 'ae.pygobject_app', 'ae.dabo_app',
-                   'ae.qpython_app', 'ae.appjar_app',
-                   'importlib._bootstrap', 'importlib._bootstrap_external')
+SKIPPED_MODULES = (
+    'ae.base', 'ae.app_log', 'ae.dynamicod', 'ae.system', 'ae.deep', 'ae.django_utils', 'ae.notify', 'ae.valid',
+    'ae.files', 'ae.paths', 'ae.i18n', 'ae.cloud_storage', 'ae.oaio_model', 'ae.oaio_client', 'ae.updater',
+    'ae.core', 'ae.literal', 'ae.config', 'ae.console', 'ae.shell', 'ae.managed_files', 'ae.pythonanywhere',
+    'ae.lockname', 'ae.progress', 'ae.sys_core', 'ae.sys_data', 'ae.sys_core_sh', 'ae.sys_data_sh',
+    'ae.db_core', 'ae.db_ora', 'ae.db_pg', 'ae.transfer_service', 'ae.sideloading_server',
+    'ae.gui', 'ae.gui.app', 'ae.gui.tours', 'ae.gui.utils',
+    'ae.kivy_glsl', 'ae.kivy_dyn_chi', 'ae.kivy_relief_canvas',
+    'ae.kivy', 'ae.kivy.apps', 'ae.kivy.behaviors', 'ae.kivy.i18n', 'ae.kivy.tours', 'ae.kivy.widgets',
+    'ae.kivy_auto_width', 'ae.kivy_file_chooser', 'ae.kivy_iterable_displayer', 'ae.kivy_qr_displayer',
+    'ae.kivy_sideloading', 'ae.kivy_user_prefs', 'ae.lisz_app_data',
+    'ae.enaml_app', 'ae.toga_app', 'ae.pyglet_app', 'ae.pygobject_app', 'ae.dabo_app', 'ae.qpython_app',
+    'importlib._bootstrap', 'importlib._bootstrap_external')
 """ skipped modules used as default by :func:`stack_var` and :func:`stack_vars` """
 
 
@@ -282,7 +169,7 @@ EnvVarsLateResolvedType = dict[str, list[tuple[str, str, str, str]]]     #: mapp
 def app_name_guess() -> str:
     """ guess/try to determine the name of the currently running app (w/o assessing not yet initialized app instance).
 
-    :return:                    application name/id or "unguessable" if not guessable.
+    :return:                    application name/id or 'unguessable' if not guessable.
     """
     app_name = build_config_variable_values(('package.name', ""))[0]
     if not app_name:
@@ -304,13 +191,13 @@ def build_config_variable_values(*names_defaults: tuple[str, Any], section: str 
     :param names_defaults:      tuple of tuples of build config variable names and default values.
     :param section:             name of the spec file section, using 'app' as default.
     :return:                    tuple of build config variable values (using the passed default value if not specified
-                                in the :data:`APP_BUILD_CFG_FILENAME` spec file or if this file does not exist in cwd).
+                                in the 'buildozer.spec' file or if this file does not exist in cwd).
     """
-    if not os_path_isfile(APP_BUILD_CFG_FILENAME):
+    if not os_path_isfile('buildozer.spec'):
         return tuple(def_val for name, def_val in names_defaults)
 
     config = instantiate_config_parser()
-    config.read(APP_BUILD_CFG_FILENAME, 'utf-8')
+    config.read('buildozer.spec', 'utf-8')
 
     return tuple(config.get(section, name, fallback=def_val) for name, def_val in names_defaults)
 
@@ -361,8 +248,8 @@ def instantiate_config_parser() -> ConfigParser:
 def late_env_var_resolver(env_vars: EnvVarsType, loaded_vars: EnvVarsType, late_resolved: EnvVarsLateResolvedType):
     """ late resolve/expand/substitute of env variables in env var values.
 
-    :param env_vars:            all cached environment variables (preferred to os.environ), will get substituted.
-                                also used to search&resolve env var values (if not found then searched in os.environ).
+    :param env_vars:            cached environment variables (prioritized over os.environ), which will get substituted.
+                                also used to search&resolve env var values (if not exist, then searched in os.environ).
     :param loaded_vars:         recently loaded environment variables, will get substituted.
     :param late_resolved:       matches of loaded env vars to be resolved late (after all env vars got detected and
                                 loaded). each key of this dict is the name of the env variable which has other env vars
@@ -371,31 +258,31 @@ def late_env_var_resolver(env_vars: EnvVarsType, loaded_vars: EnvVarsType, late_
                                 (0) escape character, (1) the dollar character, (2) the env var name literal (optionally
                                 in curly brackets) and (3/-1) the env var name.
     """
-    retries = len(late_resolved)                            # retry if later-/not-yet-replaced env var in env var value
-    while late_resolved and retries:                        # pylint: disable=too-many-nested-blocks
+    def _update_matches_retries() -> int:
+        if evn_groups[0] == '\\':                                   # if escaped '$' character
+            replace: str | None = "".join(evn_groups[1:-1])         # then only unescape (no var search&substitute)
+        elif (replace := env_vars.get(evn_groups[-1])) is None:
+            replace = os.environ.get(evn_groups[-1])
+        if replace is not None:
+            var_val = loaded_vars[var_nam]
+            env_vars[var_nam] = loaded_vars[var_nam] = var_val.replace("".join(evn_groups[0:-1]), replace)
+            matches.remove(evn_groups)
+            if replacement_matches := DOTENV_VAR_IN_VAL_MATCHER.findall(replace):
+                if any(_[-1] == var_nam for _ in replacement_matches):
+                    warnings.warn(f"   ## ignoring recursive environment variable {var_nam} ({var_val=})")
+                    replacement_matches = [_ for _ in replacement_matches if _[-1] != var_nam]
+                matches.extend(replacement_matches)     # extend matches with env vars in replaced var value
+                return len(replacement_matches)
+        return 0
+
+    retries = len(late_resolved)                        # retry if later-/not-yet-replaced env var in env var value
+    while late_resolved and retries:
         for var_nam, matches in late_resolved.copy().items():
             # substitute declared and not escaped env variables found via :data:`DOTENV_VAR_IN_VAL_MATCHER` in a value
-            for evn_groups in matches.copy():   # try to replace env vars with its values, removed from matches
-                # noinspection PyUnresolvedReferences
-                if evn_groups[0] == '\\':                               # if escaped '$' character
-                    replace: str | None = "".join(evn_groups[1:-1])  # then only unescape (no var search&substitute)
-                elif (replace := env_vars.get(evn_groups[-1])) is None:
-                    replace = os.environ.get(evn_groups[-1])
-
-                if replace is not None:
-                    var_val = loaded_vars[var_nam]
-                    env_vars[var_nam] = loaded_vars[var_nam] = var_val.replace("".join(evn_groups[0:-1]), replace)
-                    matches.remove(evn_groups)
-                    if replacement_matches := DOTENV_VAR_IN_VAL_MATCHER.findall(replace):
-                        if any(_[-1] == var_nam for _ in replacement_matches):
-                            warnings.warn(f"   ## ignoring recursive environment variable {var_nam} ({var_val=})")
-                            replacement_matches = [_ for _ in replacement_matches if _[-1] != var_nam]
-                        matches.extend(replacement_matches)     # extend matches with env vars in replaced var value
-                        retries += len(replacement_matches)
-
+            for evn_groups in matches.copy():           # try to replace env vars with its values, removed from matches
+                retries += _update_matches_retries()
             if not matches:
                 late_resolved.pop(var_nam)
-
         retries -= 1
 
     for var_nam, matches in late_resolved.items():
@@ -442,41 +329,23 @@ def load_env_var_defaults(start_dir: str, env_vars: EnvVarsType) -> EnvVarsType:
     :return:                    env var names (keys) and values added to :paramref:`.env_vars`.
     """
     start_dir = norm_path(start_dir)
-    file_path = os_path_join(start_dir, DOTENV_FILENAME)
+    file_path = os_path_join(start_dir, '.env')
     if not os_path_isfile(file_path):
-        file_path = os_path_join(os_path_dirname(start_dir), DOTENV_FILENAME)
+        file_path = os_path_join(os_path_dirname(start_dir), '.env')
 
     loaded_vars = {}
     late_resolved: EnvVarsLateResolvedType = {}
-    last_path = ""                  # prevent endless-loop for DOTENV_FILENAME in root dir
+    last_path = ""                  # prevent endless-loop for '.env' in root dir
     while os_path_isfile(file_path) and last_path != file_path:
         for var_nam, var_val in parse_dotenv(file_path, late_resolved, exclude_vars=env_vars).items():
             env_vars[var_nam] = loaded_vars[var_nam] = var_val
 
         last_path = file_path
-        file_path = os_path_join(os_path_dirname(os_path_dirname(file_path)), DOTENV_FILENAME)
+        file_path = os_path_join(os_path_dirname(os_path_dirname(file_path)), '.env')
 
     late_env_var_resolver(env_vars, loaded_vars, late_resolved)
 
     return loaded_vars
-
-
-def main_file_paths_parts(portion_name: str) -> tuple[tuple[str, ...], ...]:
-    """ determine possible/supported main/version file name and path parts, relative to the project root folder.
-
-    :param portion_name:        portion or package name.
-    :return:                    tuple of tuples of main/version file name path parts.
-    """
-    base_layouts = (
-        (PY_INIT, ),                                                            # flat layouts
-        (PY_MAIN, ),
-        ('main' + PY_EXT, ),
-        ('main', PY_INIT),
-        (portion_name + PY_EXT, ),
-        (portion_name, PY_INIT),                                                # top-level layouts (e.g. Django)
-        (portion_name, PY_MAIN),
-    )
-    return base_layouts + tuple(("src", ) + layout for layout in base_layouts)  # base layouts + src layouts
 
 
 def module_attr(import_name: str, attr_name: str) -> Any | UnsetType | None:
@@ -512,7 +381,7 @@ def module_file_path(local_object: Callable | None = None) -> str:
     file_path = stack_var('__file__')
     if not file_path:
         try:
-            # noinspection PyProtectedMember,PyUnresolvedReferences
+            # noinspection PyProtectedMember
             file_path = sys._getframe().f_back.f_code.co_filename   # type: ignore # pylint: disable=protected-access
         except (AttributeError, Exception):                         # pylint: disable=broad-except
             file_path = ""
@@ -551,24 +420,25 @@ def module_load(import_name: str, path: str | UnsetType | None = UNSET) -> Modul
 
     :param import_name:         dot-name of the module to import.
     :param path:                optional file path of the module to import. if this arg is not specified or has the
-                                default value (:data:`UNSET`), then the path will be determined from the import name.
-                                specify ``None`` to prevent the module search.
+                                default value (:data:`UNSET`), then the path will be determined from the current working
+                                directory and the import name. specify ``None`` to prevent the module search.
     :return:                    a reference to the module if the module could be loaded, else a list of error strings.
     """
     errors: list[str] = []
 
     if path is UNSET:
-        py_mo = PyMo(import_name)
-        if not os_path_isfile(path := py_mo.module_file_path) and not os_path_isfile(path := py_mo.package_file_path):
+        path_parts = cast(str, os_path_join(*import_name.split('.')))
+        if (os_path_isfile(path := path_parts + '.py') or
+                os_path_isfile(path := os_path_join(path_parts, '__init__' + '.py'))):
+            path = norm_path(path)
+        else:
             path = _path_or_err if isinstance(_path_or_err := module_find(import_name), str) else None
 
     mod_ref: ModuleType | list[str] = [f"unexpected error in load of module {import_name}"]
-    # noinspection PyUnnecessaryCast
-    spec = importlib.util.spec_from_file_location(import_name, cast(str | None, path), submodule_search_locations=[])
+    spec = importlib.util.spec_from_file_location(import_name, path, submodule_search_locations=[])
     if isinstance(spec, ModuleSpec):
         try:
             mod_ref = importlib.util.module_from_spec(spec)
-            # added isinstance calls to suppress PyCharm+mypy inspections
             if isinstance(spec.loader, importlib.abc.Loader) and isinstance(mod_ref, ModuleType):
                 spec.loader.exec_module(mod_ref)
             else:
@@ -619,7 +489,6 @@ def os_host_name() -> str:
     return defuse(platform.node()) or 'indeterminableHostName'
 
 
-# noinspection PyTypeChecker
 def os_local_ip() -> str:
     """ determine ip address of this system/machine in the local network (LAN or WLAN).
 
@@ -661,7 +530,7 @@ def _os_platform() -> str:
                                 * `'darwin'` for all Apple Mac OS X systems.
                                 * `'freebsd'` for all other BSD-based unix systems.
                                 * `'ios'` for all Apple iOS systems.
-                                * `'linux'` for all other unix systems (like Arch, Debian/Ubuntu, Suse, ...).
+                                * `'linux'` for all other unix systems (like e.g. Arch, Debian/Ubuntu, Suse).
                                 * `'win32'` for MS Windows systems (w/o the Cygwin extension).
 
     """
@@ -736,15 +605,14 @@ def os_user_name() -> str:
 def parse_dotenv(file_path: str, late_resolved: EnvVarsLateResolvedType, exclude_vars: Container = ()) -> EnvVarsType:
     """ parse ``.env`` file content and return environment variable names as dict keys and values as dict values.
 
-    :param file_path:           string with the name/path of an existing ``.env``/:data:`DOTENV_FILENAME` file.
+    :param file_path:           string with the name/path of an existing `'.env'` file.
     :param late_resolved:       mapping extended with matches of env vars found in the returned env var values.
     :param exclude_vars:        names of env vars to preserve their value (do not return).
     :return:                    mapping with parsed environment variable names and values.
     """
     lines = []          # unwrap multi-line .env variable values with backslash at line end (Docker/UNIX-style format)
     prev_lines = ""
-    # noinspection PyUnnecessaryCast
-    for line in cast(str, read_file(file_path)).splitlines():
+    for line in read_file(file_path).splitlines():
         if line.endswith('\\'):
             prev_lines += line[:-1]
             continue
@@ -756,7 +624,7 @@ def parse_dotenv(file_path: str, late_resolved: EnvVarsLateResolvedType, exclude
         match = DOTENV_LINE_MATCHER.search(line)
         if not match:
             if not re.search(r'^\s*(?:#.*)?$', line):  # not comment or blank
-                warnings.warn(f"'{line!r}' in '{file_path}' doesn't match {DOTENV_FILENAME} format", SyntaxWarning)
+                warnings.warn(f"'{line!r}' in '{file_path}' doesn't match {'.env'} format", SyntaxWarning)
             continue
 
         var_nam, var_val = match.groups()
@@ -781,36 +649,6 @@ def parse_dotenv(file_path: str, late_resolved: EnvVarsLateResolvedType, exclude
     return env_vars
 
 
-def project_main_file(import_name: str, project_path: str = "") -> str:
-    """ determine the main module file path of a project package containing the project __version__ module variable.
-
-    :param import_name:         name of the module/package (including namespace prefixes, separated with dots).
-    :param project_path:        optional path where the project of the package/module is situated. not needed if the
-                                current working directory is the root folder of either the import_name project or of a
-                                sister project (under the same project parent folder).
-    :return:                    absolute file path of the main module or empty string if no main/version file is found.
-    """
-    *namespace_dirs, portion_name = PyMo(import_name).name_parts
-    project_name = ('_'.join(namespace_dirs) + '_' if namespace_dirs else "") + portion_name
-    paths_parts = main_file_paths_parts(portion_name)
-
-    project_path = norm_path(project_path)
-    module_paths = []
-    if os_path_basename(project_path) != project_name:
-        module_paths.append(os_path_join(os_path_dirname(project_path), project_name, *namespace_dirs))
-    if namespace_dirs:
-        module_paths.append(os_path_join(project_path, *namespace_dirs))
-    module_paths.append(project_path)
-
-    for module_path in module_paths:
-        for path_parts in paths_parts:
-            main_file = os_path_join(module_path, *path_parts)
-            if os_path_isfile(main_file):
-                # noinspection PyTypeChecker
-                return main_file
-    return ""
-
-
 def stack_frames(depth: int = 1) -> Generator:  # Generator[frame, None, None]
     """ generator returning the call stack frame from the level given in :paramref:`.depth`.
 
@@ -822,7 +660,7 @@ def stack_frames(depth: int = 1) -> Generator:  # Generator[frame, None, None]
     try:
         while True:
             depth += 1
-            # noinspection PyProtectedMember,PyUnresolvedReferences
+            # noinspection PyProtectedMember
             yield sys._getframe(depth)          # pylint: disable=protected-access
     except (TypeError, AttributeError, ValueError):
         pass
@@ -948,160 +786,3 @@ def venv_prefix() -> str:
     """
     venv_path = os.getenv('VIRTUAL_ENV') or os.getenv('CONDA_PREFIX')
     return norm_path(venv_path) if venv_path else ""   # normalize found path, also for bash-emulation under win32
-
-
-class PyMo(ErrorMsgMixin):
-    """ helper class to create, represent, inspect, load or import a Python module or package. """
-    def __init__(self, import_name: str, project_path: str = "", **pypi_names: str) -> None:
-        """ create a new instance of the class :class:`PyMo`.
-
-        :param import_name:     import name of the module/package/portion.
-        :param project_path:    optional project root folder path.
-        :param pypi_names:      irregular PyPI project/distribution names; not convertable from their import names
-                                (key_word==import name; value==PyPi distribution/project name). if the import name
-                                contains a dot-character then specify this value as ``**dict``.
-        """
-        super().__init__()
-        if not import_name:
-            self.error_message = "Erroneous PyMo instance created with empty import name"
-
-        self.import_name = import_name or 'import.name.error'
-        self._project_path = project_path
-        self._pypi_names = PYPI_PACKAGE_NAMES.copy()
-        self._pypi_names.update(**pypi_names)
-
-    @classmethod
-    def from_name(cls, name: str, namespace_name: str = "", project_path: str = "", **pypi_names: str) -> Self:
-        """ create a :class:`PyMo` instance from the name of a project/package/portion/module.
-
-        :param name:            import/pip/package/project name of the module/package/portion.
-        :param namespace_name:  namespace name/path w/ or w/o the module/portion name (at the end).
-        :param project_path:    root folder path of the source project.
-        :param pypi_names:      irregular PyPI project/distribution names; not convertable from their import names
-                                (key_word==import name; value==PyPi distribution/project name).
-        :return:                PyMo instance of the Python module/package/portion. specifying invalid arguments results
-                                in an instance with an :attr:`~PyMo.import_name+` of 'import.name.error'.
-        """
-        name = (name or 'import.name.error').replace('-', '_')
-
-        if namespace_name:
-            import_name = ""
-            for namespace_part in namespace_name.split('.'):
-                if not name.startswith((namespace_part + '.', namespace_part + '_')):
-                    break
-                name = name[len(namespace_part) + 1:]
-                import_name += namespace_part + '.'
-            import_name += name
-        else:
-            import_name = name
-
-        return cls(import_name, project_path=project_path, **pypi_names)
-
-    @classmethod
-    def from_path(cls, project_path: str, namespace_name: str = "", **pypi_names: str) -> Self:
-        """ create a :class:`PyMo` instance from the specified project-root folder (source-code) path.
-
-        :param project_path:    root folder path of the project source code.
-        :param namespace_name:  namespace name/path with or without the module/portion name.
-        :param pypi_names:      irregular PyPI project/distribution names; not convertable from their import names
-                                (key_word==import name; value==PyPi distribution/project name).
-        :return:                PyMo instance of the Python module/package/portion.
-        """
-        project_path = norm_path(project_path)
-        project_name = os_path_basename(project_path)
-        if namespace_name:
-            return cls.from_name(project_name, namespace_name=namespace_name, project_path=project_path)
-
-        import_name = project_name
-        name_parts = MODULE_NAME_PATTERN.split(project_name)
-        joints = len(name_parts) - 1
-        if joints >= 1:
-            combinations = itertools.product(("/", ) + MODULE_NAME_SEPS, repeat=joints)
-            for combo in combinations:
-                name = "".join(name_parts[i] + combo[i] for i in range(joints)) + name_parts[-1]
-                *namespace_parts, portion_name = name.rsplit("/", maxsplit=1)
-                for path_parts in main_file_paths_parts(portion_name):
-                    if os_path_isfile(os_path_join(project_path, *namespace_parts, *path_parts)):
-                        import_name = name.replace("/", '.')
-                        break
-
-        return cls(import_name.replace('-', '_'), project_path=project_path, **pypi_names)
-
-    def __repr__(self):
-        return f"PyMo('{self.import_name}', project_path='{self._project_path}', pypi_names={self._pypi_names})"
-
-    def _warn(self, msg: str):
-        self.error_message = f"{self.__class__.__name__}({self.import_name}) {msg}"
-
-    @property
-    def imported_module(self) -> ModuleType | None:
-        """ try to import module, add it to sys.modules and return the spec of it (or None if not found/imported). """
-        if self.import_name in sys.modules:
-            return sys.modules[self.import_name]
-
-        try:
-            return importlib.import_module(self.import_name)
-        except (ImportError, ModuleNotFoundError, Exception) as exc:  # pylint: disable=broad-exception-caught
-            self._warn(f"imported_module raised {exc=}")
-
-        return None
-
-    @property
-    def loaded_module(self) -> ModuleType | None:
-        """ try to load module (without adding it to sys.modules). return the spec of it or None if not found. """
-        mod_ref = module_load(self.import_name)
-        if not isinstance(mod_ref, ModuleType):
-            if self._project_path:
-                mod_ref = module_load(self.import_name, path=self.package_file_path)
-                if not isinstance(mod_ref, ModuleType):
-                    mod_ref = module_load(self.import_name, path=self.module_file_path)
-
-            if not isinstance(mod_ref, ModuleType):
-                self.error_message = "\n".join(mod_ref)
-                return None
-        return mod_ref
-
-    @property
-    def module_file_path(self) -> str:
-        """ module file path (absolute if project_path got specified, else relative to the project root folder). """
-        return os_path_join(self._project_path, *self.name_parts) + PY_EXT
-
-    @property
-    def namespace_name(self) -> str:
-        """ namespace name/path of the Python module/package represented by this instance. """
-        return '.'.join(self.name_parts[:-1])
-
-    @property
-    def name_parts(self) -> list[str]:
-        """ module-/portion-name parts of the Python module, including namespace name prefix(es). """
-        return self.import_name.split('.')
-
-    @property
-    def package_name(self) -> str:
-        """ name of the package/project of the Python module. """
-        return '_'.join(self.name_parts)
-
-    @property
-    def package_file_path(self) -> str:
-        """ package path w/ PY_INIT (and project_path if specified, else relative to the project root folder). """
-        return os_path_join(self._project_path, *self.name_parts, PY_INIT)
-
-    @property
-    def pip_name(self) -> str:
-        """ pip&PyPI package name of the Python module. """
-        return norm_pip_name(self.project_name)
-
-    @property
-    def portion_name(self) -> str:
-        """ name of the Python module """
-        return self.name_parts[-1]
-
-    @property
-    def project_name(self) -> str:
-        """ name of the Python distribution/project (could differ from the :attr:`~PyMo.package_name` property). """
-        return self._pypi_names.get(self.import_name, self.package_name)
-
-    @property
-    def project_root_path(self) -> str:
-        """ normalized absolute project root path of the Python module. """
-        return norm_path(self._project_path or self.package_name)

@@ -1,4 +1,4 @@
-# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.103
+# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.106
 """ setup of ae namespace module portion system: Python system helpers. """
 import pathlib
 import sys
@@ -50,7 +50,6 @@ setup_kwargs: dict[str, Any] = {
     'install_requires': [
         'pyjnius',
         'ae_base',
-        'ae_app_log',
     ],
     'keywords': [
         'configuration',
@@ -76,7 +75,7 @@ setup_kwargs: dict[str, Any] = {
     },
     'python_requires': '>=3.12',
     'url': 'https://gitlab.com/ae-group/ae_system',
-    'version': '0.3.20',
+    'version': '0.3.21',
     'zip_safe': True,
 }
 

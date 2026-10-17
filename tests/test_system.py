@@ -1,4 +1,4 @@
-""" ae.system unit tests. """
+""" ae.system unit tests """
 import importlib
 import os
 import sys
@@ -8,7 +8,6 @@ import warnings
 
 from configparser import ConfigParser
 from types import ModuleType
-from typing import cast
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -16,22 +15,19 @@ import pytest
 from tests.conftest import skip_gitlab_ci
 
 from ae.base import (
-    DEF_PROJECT_PARENT_FOLDER, PY_EXT, PY_INIT, PY_MAIN, TESTS_FOLDER, UNSET,
-    norm_path, os_path_basename, os_path_dirname, os_path_isdir, os_path_join,
-    url_failure, write_file)
+    UNSET,
+    norm_path, os_path_dirname, os_path_isfile, os_path_join, os_path_relpath, write_file)
 
 
-import ae.system  # to test global module variables (os_device_id) and to reimport ae.system for all supported platforms
+import ae.system  # to test and reload/import global module variables (os_device_id) for all supported platforms
 # noinspection PyProtectedMember
 from ae.system import (
-    APP_BUILD_CFG_FILENAME, DOTENV_FILENAME, DOTENV_VAR_IN_VAL_MATCHER, PYPI_PACKAGE_NAMES,
+    DOTENV_VAR_IN_VAL_MATCHER,
     app_name_guess, build_config_variable_values, full_stack_trace, instantiate_config_parser,
-    late_env_var_resolver, load_dotenvs, load_env_var_defaults, main_file_paths_parts,
+    late_env_var_resolver, load_dotenvs, load_env_var_defaults,
     module_attr, module_find, module_load, module_file_path, norm_pip_name,
     os_env_venv, os_host_name, os_local_ip, _os_platform, os_user_name,
-    parse_dotenv, project_main_file,
-    stack_frames, stack_var, stack_vars, sys_env_dict, sys_env_text, venv_prefix,
-    PyMo)
+    parse_dotenv, stack_frames, stack_var, stack_vars, sys_env_dict, sys_env_text, venv_prefix)
 
 
 module_test_var = 'module_test_var_val'   # used for stack_var()/try_exec() tests
@@ -61,13 +57,13 @@ def os_env_test_env():
     """ create .env files to test and backup os.environ. """
     with tempfile.TemporaryDirectory() as tmp_path:
         for level in range(DOTENV_DIR_RANGE):
-            file_path = os.path.join(tmp_path, *((DOTENV_DIR_NAME, ) * level))
+            file_path = os_path_join(tmp_path, *((DOTENV_DIR_NAME, ) * level))
             os.makedirs(file_path, exist_ok=True)
             if level in DOTENV_FULL_DIRS:
                 content = (os.linesep + DOTENV_VAR_NAME + "='" + DOTENV_VAR_VAL + str(level) + "'" +
                            os.linesep + DOTENV_LATE_VAR_PRE + str(level) + '="' + DOTENV_LIT_VALUES[level] + '"' +
                            os.linesep + "RecursiveWithLowerCase = $RecursiveWithLowerCase")
-                write_file(os.path.join(file_path, DOTENV_FILENAME), content)
+                write_file(os_path_join(file_path, '.env'), content)
 
         old_env = os.environ
         os.environ = old_env.copy()
@@ -77,51 +73,24 @@ def os_env_test_env():
         os.environ = old_env
 
 
-@skip_gitlab_ci
-def test_pip_names():
-    pypi_root_url = "https://pypi.org"  # == aedev.base.PYPI_ROOT_URL
-    found_pip_names = set()
-    for imp_name, pip_name in PYPI_PACKAGE_NAMES.items():
-        assert imp_name
-
-        assert pip_name
-        assert not url_failure(f"{pypi_root_url}/project/{pip_name}/")
-        assert pip_name.replace('.', '-').replace('_', '-').lower() == norm_pip_name(pip_name)
-
-        pip_norm_name = norm_pip_name(pip_name)         # normalized pypi.org/project/<name>
-        assert not url_failure(f"{pypi_root_url}/project/{pip_norm_name}")
-
-        # prevent accidentally duplicated pip/pypi-Names (apart from the explicitly excluded extensions)
-        assert (pip_norm_name not in found_pip_names
-                or pip_name == 'pymongo' and imp_name in ('bson', 'gridfs')
-                or pip_name == 'pywin32' and imp_name in ('win32api', 'win32com')
-                or pip_name == 'django-cms' and imp_name in ('cms', 'menus')
-                )
-        found_pip_names.add(pip_norm_name)
-
-
 class TestCommonHelpers:
     def test_app_name_guess(self):
         assert app_name_guess()     # app.exe name in pytest returning '_jb_pytest_runner'(PyCharm)/'__main__'(console)
         assert app_name_guess() != 'main'
         assert app_name_guess() == 'unguessable'
 
-    def test_build_config_variable_values_with_spec(self):
-        try:
-            with open(APP_BUILD_CFG_FILENAME, "w") as file_handle:
-                file_handle.write("""[app]\nexisting = tst""")
-            existing, not_existing = build_config_variable_values(
-                ('existing', ""),
-                ('not_existing', "default_value")
-            )
-            assert existing == "tst"
-            assert not_existing == "default_value"
-        finally:
-            if os.path.exists(APP_BUILD_CFG_FILENAME):
-                os.remove(APP_BUILD_CFG_FILENAME)
+    def test_build_config_variable_values_with_spec(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(str(tmp_path))
+        write_file('buildozer.spec', "[app]\nexisting = tst")
+        existing, not_existing = build_config_variable_values(
+            ('existing', ""),
+            ('not_existing', "default_value")
+        )
+        assert existing == "tst"
+        assert not_existing == "default_value"
 
     def test_build_config_variable_values_no_spec(self):
-        assert not os.path.exists(APP_BUILD_CFG_FILENAME)
+        assert not os_path_isfile('buildozer.spec')
         existing, not_existing = build_config_variable_values(
             ('not_existing1', "default_value1"),
             ('not_existing2', "default_value2")
@@ -133,21 +102,6 @@ class TestCommonHelpers:
         cfg_parser = instantiate_config_parser()
         assert isinstance(cfg_parser, ConfigParser)
         assert cfg_parser.optionxform is str
-
-    def test_main_file_paths_parts(self):
-        assert isinstance(main_file_paths_parts(""), tuple)
-        assert len(main_file_paths_parts(""))
-        assert isinstance(main_file_paths_parts("")[0], tuple)
-
-        assert ('main' + PY_EXT, ) in main_file_paths_parts("")
-        assert any(PY_MAIN in _ for _ in main_file_paths_parts(""))
-        assert any(PY_INIT in _ for _ in main_file_paths_parts(""))
-
-        por_name = "portion_tst_name"
-        assert ('main' + PY_EXT, ) in main_file_paths_parts(por_name)
-        assert (por_name, PY_INIT) in main_file_paths_parts(por_name)
-        assert any(por_name in _ for _ in main_file_paths_parts(por_name))
-        assert any(por_name + PY_EXT in _ for _ in main_file_paths_parts(por_name))
 
     def test_norm_pip_name(self):
         assert norm_pip_name('') == ''
@@ -166,78 +120,39 @@ class TestCommonHelpers:
         with patch('ae.system.socket.socket', return_value=mock_sock):
             assert os_local_ip() == ""
 
-    def test_os_platform_android(self):
-        try:
-            os.environ['ANDROID_ARGUMENT'] = 'tst'
-            assert _os_platform() == 'android'
-        finally:
-            os.environ.pop('ANDROID_ARGUMENT', None)
+    def test_os_platform_android1(self, monkeypatch):
+        monkeypatch.setenv('ANDROID_ARGUMENT', 'tst')
+        os.environ['ANDROID_ARGUMENT'] = 'tst'
+        assert _os_platform() == 'android'
 
-        # noinspection PyUnreachableCode
-        try:
-            os.environ['KIVY_BUILD'] = 'android'
-            assert _os_platform() == 'android'
-        finally:
-            os.environ.pop('KIVY_BUILD', None)
+    def test_os_platform_android2(self, monkeypatch):
+        monkeypatch.setenv('KIVY_BUILD', 'android')
+        os.environ['KIVY_BUILD'] = 'android'
+        assert _os_platform() == 'android'
 
     def test_os_platform_cygwin(self):
-        old_platform = sys.platform
-        try:
-            sys.platform = 'cygwin'
+        with patch('sys.platform', 'cygwin'):
             assert _os_platform() == 'cygwin'
-        finally:
-            sys.platform = old_platform
 
     def test_os_platform_darwin(self):
-        old_platform = sys.platform
-        try:
-            sys.platform = 'darwin'
+        with patch('sys.platform', 'darwin'):
             assert _os_platform() == 'darwin'
-        finally:
-            sys.platform = old_platform
 
     def test_os_platform_freebsd(self):
-        old_platform = sys.platform
-        try:
-            sys.platform = 'freebsd'
+        with patch('sys.platform', 'freebsd'):
             assert _os_platform() == 'freebsd'
-        finally:
-            sys.platform = old_platform
 
     def test_os_platform_ios(self):
-        try:
-            os.environ['KIVY_BUILD'] = 'ios'
+        with patch('sys.platform', 'ios'):
             assert _os_platform() == 'ios'
-        finally:
-            os.environ.pop('KIVY_BUILD', None)
 
     def test_os_platform_win32(self):
-        old_platform = sys.platform
-        try:
-            sys.platform = 'win32'
+        with patch('sys.platform', 'win32'):
             assert _os_platform() == 'win32'
-        finally:
-            sys.platform = old_platform
 
     def test_os_user_name(self):
         print(os_user_name())
         assert os_user_name()
-
-    def test_project_main_file(self, tmp_path):
-        assert project_main_file("not_existing_xy.tst") == ""
-
-        ae_system_main_file = norm_path(os.path.join("ae", "system" + PY_EXT))
-        assert project_main_file("ae.system") == ae_system_main_file
-        assert project_main_file("ae.system", norm_path("")) == ae_system_main_file
-
-        local_project_dir = os.path.join(str(tmp_path), "ae_system")
-        local_main_file = norm_path(os.path.join(local_project_dir, "main.py"))
-
-        write_file(local_main_file, "# main file content", make_dirs=True)
-        assert project_main_file("ae.system") == ae_system_main_file
-        assert project_main_file("ae.system", norm_path("")) == ae_system_main_file
-        assert project_main_file("ae.system", local_project_dir) == local_main_file
-        assert project_main_file("ae.system", norm_path(local_project_dir)) == local_main_file
 
 
 class TestEnvVars:
@@ -307,14 +222,14 @@ class TestEnvVars:
         load_env_var_defaults('.', os.environ)
         assert DOTENV_VAR_NAME not in os.environ
 
-        load_env_var_defaults(os.path.join(os_env_test_env, *((DOTENV_DIR_NAME,) * 5)), os.environ)
+        load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 5)), os.environ)
         assert DOTENV_VAR_NAME not in os.environ
 
-        load_env_var_defaults(os.path.join(os_env_test_env, *((DOTENV_DIR_NAME,) * 6)), os.environ)  # too-deep path
+        load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 6)), os.environ)  # too-deep path
         assert DOTENV_VAR_NAME not in os.environ
 
     def test_load_env_var_defaults_load_start_parent_first_no_chain(self, monkeypatch, os_env_test_env):
-        monkeypatch.chdir(os.path.join(os_env_test_env, *((DOTENV_DIR_NAME,) * 4)))
+        monkeypatch.chdir(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 4)))
 
         loaded = load_env_var_defaults("", os.environ)
 
@@ -324,7 +239,7 @@ class TestEnvVars:
         assert os.environ[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '3'
 
     def test_load_env_var_defaults_load_start_first_no_chain(self, os_env_test_env):
-        loaded = load_env_var_defaults(os.path.join(os_env_test_env, *((DOTENV_DIR_NAME,) * 3)), os.environ)
+        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 3)), os.environ)
 
         assert DOTENV_VAR_NAME in loaded
         assert loaded[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '3'
@@ -332,7 +247,7 @@ class TestEnvVars:
         assert os.environ[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '3'
 
     def test_load_env_var_defaults_load_start_parent_first_in_chain(self, os_env_test_env):
-        loaded = load_env_var_defaults(os.path.join(os_env_test_env, *((DOTENV_DIR_NAME,) * 2)), os.environ)
+        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 2)), os.environ)
 
         assert DOTENV_VAR_NAME in loaded
         assert loaded[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '1'
@@ -340,7 +255,7 @@ class TestEnvVars:
         assert os.environ[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '1'
 
     def test_load_env_var_defaults_load_start_no_parent_first_in_chain(self, os_env_test_env):
-        loaded = load_env_var_defaults(os.path.join(os_env_test_env, *((DOTENV_DIR_NAME,) * 1)), os.environ)
+        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 1)), os.environ)
 
         assert DOTENV_VAR_NAME in loaded
         assert loaded[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '1'
@@ -348,7 +263,7 @@ class TestEnvVars:
         assert os.environ[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '1'
 
     def test_load_env_var_defaults_load_start_on_second_within_chain(self, os_env_test_env):
-        loaded = load_env_var_defaults(os.path.join(os_env_test_env, *((DOTENV_DIR_NAME,) * 0)), os.environ)
+        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 0)), os.environ)
 
         assert DOTENV_VAR_NAME in loaded
         assert loaded[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '0'
@@ -356,7 +271,7 @@ class TestEnvVars:
         assert os.environ[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '0'
 
     def test_load_env_var_defaults_resolve_vars_late(self, os_env_test_env):
-        loaded = load_env_var_defaults(os.path.join(os_env_test_env, *((DOTENV_DIR_NAME,) * 1)), os.environ)
+        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 1)), os.environ)
 
         assert DOTENV_LATE_VAR_PRE + '0' in loaded
         assert DOTENV_LATE_VAR_PRE + '0' in os.environ
@@ -372,7 +287,7 @@ class TestEnvVars:
     def test_load_env_var_defaults_resolve_vars_late_with_gap_and_closed_gap(self, os_env_test_env):
         empty_env = {}
 
-        loaded = load_env_var_defaults(os.path.join(os_env_test_env, *((DOTENV_DIR_NAME, ) * 3)), empty_env)
+        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME, ) * 3)), empty_env)
 
         assert DOTENV_LATE_VAR_PRE + '0' not in loaded
         assert DOTENV_LATE_VAR_PRE + '0' not in empty_env
@@ -383,9 +298,9 @@ class TestEnvVars:
         assert loaded[DOTENV_LATE_VAR_PRE + '3'] == DOTENV_LIT_VALUES[3]
         assert empty_env[DOTENV_LATE_VAR_PRE + '3'] == DOTENV_LIT_VALUES[3]
 
-        write_file(os.path.join(os_env_test_env, *((DOTENV_DIR_NAME, ) * 2), DOTENV_FILENAME), "# closing level 2 gap")
+        write_file(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME, ) * 2), '.env'), "# closing level 2 gap")
 
-        loaded = load_env_var_defaults(os.path.join(os_env_test_env, *((DOTENV_DIR_NAME, ) * 3)), os.environ)
+        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME, ) * 3)), os.environ)
 
         assert DOTENV_LATE_VAR_PRE + '0' in loaded
         assert DOTENV_LATE_VAR_PRE + '0' in os.environ
@@ -482,7 +397,7 @@ class TestEnvVars:
 
             assert 'var_nam' not in loaded
             assert len(recwarn) == 1
-            assert f"doesn't match {DOTENV_FILENAME} format" in str(recwarn[0].message)
+            assert f"doesn't match {'.env'} format" in str(recwarn[0].message)
 
     def test_parse_dotenv_escaped_double_quote(self):
         with tempfile.NamedTemporaryFile(mode="w") as fp:
@@ -754,7 +669,7 @@ class TestEnvVars:
 
     def test_parse_dotenv_start_parent_first_in_chain(self, os_env_test_env):
         assert DOTENV_VAR_NAME not in os.environ
-        file_path = os.path.join(os_env_test_env, DOTENV_DIR_NAME, DOTENV_FILENAME)
+        file_path = os_path_join(os_env_test_env, DOTENV_DIR_NAME, '.env')
 
         loaded = parse_dotenv(file_path, {})
 
@@ -802,56 +717,47 @@ class TestEnvVars:
 
 
 class TestModuleHelpers:
-    def test_module_attr_callable_with_args(self):
-        namespace = TESTS_FOLDER
+    def test_module_attr_callable_with_args(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        namespace = "tst_nsn"
         mod_name = 'test_module_name'
         att_name = 'test_module_func'
-        # noinspection PyUnnecessaryCast
-        module_file = cast(str, os.path.join(namespace, mod_name + PY_EXT))
-        try:
-            write_file(module_file, f"def {att_name}(*args, **kwargs):\n    return args, kwargs\n")
-            args = (1, '2')
-            kwargs = dict(kwarg1=1, kwarg2='2')
+        write_file(os_path_join(namespace, mod_name + '.py'),
+                   f"def {att_name}(*args, **kwargs):\n    return args, kwargs\n",
+                   make_dirs=True)
+        args = (1, '2')
+        kwargs = dict(kwarg1=1, kwarg2='2')
 
-            ret = module_attr(namespace + '.' + mod_name, att_name)
-            assert ret
-            assert callable(type(ret))
+        ret = module_attr(namespace + '.' + mod_name, att_name)
+        assert ret
+        assert callable(type(ret))
 
-            call_ret = ret(*args, **kwargs)
-            assert call_ret
-            assert call_ret[0] == args
-            assert call_ret[1] == kwargs
+        call_ret = ret(*args, **kwargs)
+        assert call_ret
+        assert call_ret[0] == args
+        assert call_ret[1] == kwargs
 
-        finally:
-            if os.path.exists(module_file):
-                os.remove(module_file)
-
-        # test already imported module
-        # noinspection PyUnreachableCode
+        # test already imported module another module_attr() call after load of non-registered module
         callee = module_attr('textwrap', 'indent')
         assert callable(callee)
         assert callee is textwrap.indent
 
-    def test_module_attr_callable_wrong_args(self):
-        namespace = TESTS_FOLDER
+    def test_module_attr_callable_wrong_args(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        namespace = "nsn_tst"
         mod_name = 'test_module_name'
         att_name = 'test_module_func'
-        # noinspection PyUnnecessaryCast
-        module_file = cast(str, os.path.join(namespace, mod_name + PY_EXT))
-        try:
-            write_file(module_file, f"def {att_name}(arg1, args2, kwarg1='default'):\n    return arg1, arg2, kwarg1\n")
+        write_file(os_path_join(namespace, mod_name + '.py'),
+                   f"def {att_name}(arg1, args2, kwarg1='default'):\n    return arg1, arg2, kwarg1\n",
+                   make_dirs=True)
 
-            callee = module_attr(namespace + '.' + mod_name, att_name)
-            assert callable(callee)
+        callee = module_attr(namespace + '.' + mod_name, att_name)
+        assert callable(callee)
 
-            args = (1, '2')
-            kwargs = dict(kwarg1=1, kwarg2='2')
-            with pytest.raises(TypeError):
-                callee(*args, **kwargs)
-
-        finally:
-            if os.path.exists(module_file):
-                os.remove(module_file)
+        args = (1, '2')
+        kwargs = dict(kwarg1=1, kwarg2='2')
+        with pytest.raises(TypeError):
+            callee(*args, **kwargs)
 
     def test_module_attr_imported(self):
         """ test with module w/ and w/o namespace. """
@@ -865,8 +771,7 @@ class TestModuleHelpers:
         mod_name = 'test_module_name'
         attr_nam = 'module_var'
         attr_val = 369
-        # noinspection PyUnnecessaryCast
-        module_file = cast(str, os.path.join(namespace, mod_name + PY_EXT))
+        module_file = os_path_join(namespace, mod_name + '.py')
 
         write_file(module_file, f"# unregistered tst module\n{attr_nam} = {attr_val}")
 
@@ -881,8 +786,7 @@ class TestModuleHelpers:
         namespace = str(tmp_path)
         mod_name = 'test_module_name'
         att_name = 'test_module_func'
-        # noinspection PyUnnecessaryCast
-        module_file = cast(str, os.path.join(namespace, mod_name + PY_EXT))
+        module_file = os_path_join(namespace, mod_name + '.py')
         write_file(module_file, f"""def {att_name}(*args, **kwargs):\n    pass\n""")
 
         assert module_attr(namespace + '.' + mod_name, "not_existing_func_or_attr") is UNSET
@@ -922,7 +826,7 @@ class TestModuleHelpers:
 
     def test_module_find_local_module(self, monkeypatch, tmp_path):
         module = "tst_mod_nam"
-        mod_file = os.path.join(str(tmp_path), module + PY_EXT)
+        mod_file = os_path_join(str(tmp_path), module + '.py')
         write_file(mod_file, f"# module_find test module\nsome_var = 'some_var_val'")
 
         assert isinstance(module_find(module), list)    # not found because neither under sys.path nor in sys.modules
@@ -932,6 +836,12 @@ class TestModuleHelpers:
         mod_path = module_find(module)
 
         assert isinstance(mod_path, str)
+
+    def test_module_find_spec_exception(self):
+        with patch('ae.system.importlib.util.find_spec', side_effect=ValueError):
+            errors = module_find('tst_import_name')
+            assert isinstance(errors, list) and len(errors) == 1
+            assert 'tst_import_name' in errors[0]
 
     def test_module_find_submodule_search_locations(self):
         spec_mock = MagicMock()
@@ -960,9 +870,15 @@ class TestModuleHelpers:
             assert isinstance(err, list) and len(err) == 1
             assert "is not of importlib.abs.loader" in err[0]
 
+    def test_module_load_exception(self):
+        with patch('ae.system.importlib.util.module_from_spec', side_effect=FileNotFoundError):
+            err = module_load('os')
+            assert isinstance(err, list) and len(err) == 1
+            assert "'os'" in err[0]
+
     def test_module_load_local_module(self, monkeypatch, tmp_path):
         module = "mod_2_tst"
-        mod_file = os.path.join(str(tmp_path), module + PY_EXT)
+        mod_file = os_path_join(str(tmp_path), module + '.py')
         write_file(mod_file, "mod_var = 'mod_var_val'")
 
         mod_ref = module_load(module, path=os_path_dirname(mod_file))
@@ -982,7 +898,7 @@ class TestModuleHelpers:
 
         monkeypatch.chdir(str(tmp_path))
 
-        mod_ref = module_load(module, path=module + PY_EXT)
+        mod_ref = module_load(module, path=module + '.py')
 
         assert isinstance(mod_ref, ModuleType)
         assert getattr(mod_ref, 'mod_var') == 'mod_var_val'
@@ -996,8 +912,8 @@ class TestModuleHelpers:
         namespace = "y_xx"
         portion = "por_2_tst"
 
-        pkg_path = os.path.join(str(tmp_path), namespace, portion)
-        pkg_file = os.path.join(pkg_path, PY_INIT)
+        pkg_path = os_path_join(str(tmp_path), namespace, portion)
+        pkg_file = os_path_join(pkg_path, '__init__' + '.py')
         write_file(pkg_file, "pkg_var = 'pkg_var_val'", make_dirs=True)
 
         mod_ref = module_load(portion, path=pkg_path)
@@ -1027,7 +943,7 @@ class TestModuleHelpers:
         assert isinstance(mod_ref, ModuleType)
         assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
 
-        mod_ref = module_load(namespace + '.' + portion, path=os.path.relpath(pkg_file, str(tmp_path)))
+        mod_ref = module_load(namespace + '.' + portion, path=os_path_relpath(pkg_file, str(tmp_path)))
 
         assert isinstance(mod_ref, ModuleType)
         assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
@@ -1289,498 +1205,3 @@ class TestVenvIntegration:
 
         with patch('ae.system.os.getenv', return_value=""):
             assert venv_prefix() == ""
-
-
-class TestPyMo:
-    def test_from_name(self):
-        assert PyMo.from_name("") is not None
-        # noinspection PyTypeChecker
-        assert PyMo.from_name(None).import_name == 'import.name.error'
-        assert PyMo.from_name("").import_name == 'import.name.error'
-        assert PyMo.from_name("", namespace_name=".").import_name == 'import.name.error'
-        assert PyMo.from_name("", namespace_name="tst").import_name == 'import.name.error'
-        assert PyMo.from_name("", namespace_name="tst.name").import_name == 'import.name.error'
-
-        assert (_mod := PyMo.from_name("imp.tst.name")) is not None
-        assert _mod.import_name == "imp.tst.name"
-        assert _mod.project_root_path == norm_path("imp_tst_name")
-
-        assert (_mod := PyMo.from_name("imp.tst.name", namespace_name="imp")) is not None
-        assert _mod.import_name == "imp.tst.name"
-        assert _mod.project_root_path == norm_path("imp_tst_name")
-
-        assert (_mod := PyMo.from_name("imp.tst.name", namespace_name="imp.tst")) is not None
-        assert _mod.import_name == "imp.tst.name"
-        assert _mod.project_root_path == norm_path("imp_tst_name")
-
-        assert (_mod := PyMo.from_name("pip-tst-name")) is not None
-        assert _mod.import_name == "pip_tst_name"
-        assert _mod.project_root_path == norm_path("pip_tst_name")
-
-        assert (_mod := PyMo.from_name("pip-tst-name", namespace_name="pip")) is not None
-        assert _mod.import_name == "pip.tst_name"
-        assert _mod.project_root_path == norm_path("pip_tst_name")
-
-        assert (_mod := PyMo.from_name("pip-tst-name", namespace_name="pip.tst")) is not None
-        assert _mod.import_name == "pip.tst.name"
-        assert _mod.project_root_path == norm_path("pip_tst_name")
-
-        assert (_mod := PyMo.from_name("pkg_tst_name")) is not None
-        assert _mod.import_name == "pkg_tst_name"
-        assert _mod.project_root_path == norm_path("pkg_tst_name")
-
-        assert (_mod := PyMo.from_name("pkg_tst_name", namespace_name="pkg")) is not None
-        assert _mod.import_name == "pkg.tst_name"
-        assert _mod.project_root_path == norm_path("pkg_tst_name")
-
-        assert (_mod := PyMo.from_name("pkg_tst_name", namespace_name="pkg.tst")) is not None
-        assert _mod.import_name == "pkg.tst.name"
-        assert _mod.project_root_path == norm_path("pkg_tst_name")
-
-    @skip_gitlab_ci
-    def test_from_path_local_src_packages(self):
-        parent_dir = norm_path(f"~/{DEF_PROJECT_PARENT_FOLDER}")
-        if os_path_isdir(_path := f"{parent_dir}/ae_kivy"):
-            assert (_mod := PyMo.from_path(_path))  # w/o namespace_name argument!
-            assert _mod.error_message == ""
-            assert _mod.import_name == 'ae.kivy'
-            assert isinstance(_mod.imported_module, ModuleType)
-            assert isinstance(_mod.loaded_module, ModuleType)
-            assert hasattr(_mod.loaded_module, '__path__')
-            assert _mod.module_file_path == f"{parent_dir}/ae_kivy/ae/kivy{PY_EXT}"
-            assert _mod.namespace_name == "ae"
-            assert _mod.name_parts == ["ae", "kivy"]
-            assert _mod.package_file_path == f"{parent_dir}/ae_kivy/ae/kivy/{PY_INIT}"
-            assert _mod.package_name == "ae_kivy"
-            assert _mod.pip_name == "ae-kivy"
-            assert _mod.portion_name == "kivy"
-            assert _mod.project_name == "ae_kivy"
-            assert _mod.project_root_path == _path
-
-        if os_path_isdir(_path := f"{parent_dir}/ae_kivy"):
-            assert (_mod := PyMo.from_path(_path, namespace_name='ae'))
-            assert _mod.error_message == ""
-            assert _mod.import_name == 'ae.kivy'
-            assert isinstance(_mod.imported_module, ModuleType)
-            assert isinstance(_mod.loaded_module, ModuleType)
-            assert hasattr(_mod.loaded_module, '__path__')
-            assert _mod.module_file_path == f"{parent_dir}/ae_kivy/ae/kivy{PY_EXT}"
-            assert _mod.namespace_name == "ae"
-            assert _mod.name_parts == ["ae", "kivy"]
-            assert _mod.package_file_path == f"{parent_dir}/ae_kivy/ae/kivy/{PY_INIT}"
-            assert _mod.package_name == "ae_kivy"
-            assert _mod.pip_name == "ae-kivy"
-            assert _mod.portion_name == "kivy"
-            assert _mod.project_name == "ae_kivy"
-            assert _mod.project_root_path == _path
-
-        if os_path_isdir(_path := f"{parent_dir}/ae_kivy_glsl"):
-            assert (_mod := PyMo.from_path(_path))  # w/o namespace_name arg
-            assert _mod.error_message == ""
-            assert _mod.import_name == 'ae.kivy_glsl'
-            assert _mod.module_file_path == f"{parent_dir}/ae_kivy_glsl/ae/kivy_glsl{PY_EXT}"
-            assert _mod.namespace_name == 'ae'
-            assert _mod.name_parts == ['ae', 'kivy_glsl']
-            assert _mod.package_file_path == f"{parent_dir}/ae_kivy_glsl/ae/kivy_glsl/{PY_INIT}"
-            assert _mod.portion_name == 'kivy_glsl'
-            assert _mod.project_root_path == _path
-
-        if os_path_isdir(_path := f"{parent_dir}/ae_kivy_glsl"):
-            assert (_mod := PyMo.from_path(_path, namespace_name='ae'))
-            assert _mod.error_message == ""
-            assert _mod.import_name == 'ae.kivy_glsl'
-            assert _mod.module_file_path == f"{parent_dir}/ae_kivy_glsl/ae/kivy_glsl{PY_EXT}"
-            assert _mod.namespace_name == 'ae'
-            assert _mod.name_parts == ['ae', 'kivy_glsl']
-            assert _mod.package_file_path == f"{parent_dir}/ae_kivy_glsl/ae/kivy_glsl/{PY_INIT}"
-            assert _mod.portion_name == 'kivy_glsl'
-            assert _mod.project_root_path == _path
-
-        if os_path_isdir(_path := f"{parent_dir}/glsl_tester"):
-            assert (_mod := PyMo.from_path(_path))
-            assert _mod.error_message == ""
-            assert _mod.import_name == 'glsl_tester'
-            assert _mod.module_file_path == f"{parent_dir}/glsl_tester/glsl_tester{PY_EXT}"
-            assert _mod.namespace_name == ''
-            assert _mod.name_parts == ["glsl_tester"]
-            assert _mod.package_name == 'glsl_tester'
-            assert _mod.project_root_path == _path
-
-        if os_path_isdir(_path := f"{parent_dir}/oaio_server"):
-            assert (_mod := PyMo.from_path(_path))
-            assert _mod.error_message == ""
-            assert _mod.import_name == 'oaio_server'
-            assert _mod.namespace_name == ''
-            assert _mod.name_parts == ["oaio_server"]
-            assert _mod.package_name == "oaio_server"
-            assert _mod.project_root_path == _path
-
-        if os_path_isdir(_path := f"{parent_dir}/kairos"):
-            assert (_mod := PyMo.from_path(_path))
-            assert _mod.error_message == ""
-            assert _mod.import_name == 'kairos'
-            assert _mod.namespace_name == ''
-            assert _mod.name_parts == ["kairos"]
-            assert _mod.project_root_path == _path
-
-    def test_from_path_not_existing(self):
-        assert PyMo.from_path("") is not None
-        assert PyMo.from_path("").import_name == 'ae.system'
-        assert PyMo.from_path("", namespace_name=".") is not None
-        assert PyMo.from_path("", namespace_name="namespacename") is not None
-        assert PyMo.from_path("", namespace_name="namespace.name") is not None
-        assert PyMo.from_path("", namespace_name="namespace-name") is not None
-        assert PyMo.from_path("", namespace_name="namespace_name") is not None
-
-        assert (_mod := PyMo.from_path("not_existing_project_dir")) is not None
-        assert _mod.import_name == "not_existing_project_dir"
-
-        assert (_mod := PyMo.from_path("not_existing_project_dir", namespace_name="not.existing")) is not None
-        assert _mod.import_name == "not.existing.project_dir"
-
-        assert PyMo.from_path("~/_not_existing") is not None
-
-    def test_pymo_class_and_instance(self):
-        assert PyMo("").__class__ is PyMo
-        assert PyMo("")
-        assert PyMo("xy_abc")
-        assert PyMo("a.b.c")
-
-    def test_imported_module_ae_base(self):
-        mod_ref = PyMo('ae.base').imported_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'TESTS_FOLDER') == TESTS_FOLDER
-
-    def test_imported_module_built_ins(self):
-        assert isinstance(PyMo('os').imported_module, ModuleType)
-        assert isinstance(PyMo('os.path').imported_module, ModuleType)
-        assert isinstance(PyMo('textwrap').imported_module, ModuleType)
-
-    def test_imported_module_local_module(self, monkeypatch, tmp_path):
-        module = "mod_2_tst"
-        # noinspection PyUnnecessaryCast
-        mod_file = cast(str, os.path.join(str(tmp_path), module + PY_EXT))
-        write_file(mod_file, "mod_var = 'mod_var_val'")
-
-        assert PyMo(module).imported_module is None
-
-        assert PyMo(module, project_path=str(tmp_path)).imported_module is None
-
-        assert PyMo(os_path_basename(str(tmp_path)) + '.' + module).imported_module is None
-
-        monkeypatch.chdir(str(tmp_path))
-
-        assert PyMo(module, project_path=module + PY_EXT).imported_module is None
-
-        assert PyMo(module).imported_module is None
-
-        monkeypatch.syspath_prepend(str(tmp_path))
-
-        mod_ref = PyMo(module, project_path=mod_file).imported_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'mod_var') == 'mod_var_val'
-
-        monkeypatch.syspath_prepend(os_path_dirname(str(tmp_path)))
-
-        mod_ref = PyMo(os_path_basename(str(tmp_path)) + '.' + module).imported_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'mod_var') == 'mod_var_val'
-
-    def test_imported_module_local_package(self, monkeypatch, tmp_path):
-        namespace = "z_y"
-        portion = "por_2_tst"
-        pkg_root = os.path.join(str(tmp_path), namespace)
-        pkg_path = os.path.join(pkg_root, portion)
-        pkg_file = os.path.join(pkg_path, PY_INIT)
-        write_file(pkg_file, "pkg_var = 'pkg_var_val'", make_dirs=True)
-
-        assert PyMo(namespace + '.' + portion).imported_module is None
-
-        assert PyMo(portion).loaded_module is None
-
-        assert PyMo(portion, project_path=pkg_root).imported_module is None
-
-        assert PyMo(portion, project_path=pkg_file).imported_module is None
-
-        assert PyMo(namespace + '.' + portion, project_path=os_path_dirname(pkg_root)).imported_module is None
-
-        assert PyMo(str(tmp_path) + '.' + namespace + '.' + portion, project_path=pkg_root).imported_module is None
-
-        assert PyMo(str(tmp_path) + '.' + namespace + '.' + portion).imported_module is None
-
-        monkeypatch.chdir(str(tmp_path))
-
-        assert PyMo(namespace + '.' + portion).imported_module is None
-
-        assert PyMo(namespace + '.' + portion,
-                    project_path=os.path.relpath(pkg_file, str(tmp_path))).imported_module is None
-
-        monkeypatch.syspath_prepend(str(tmp_path))
-
-        mod_ref = PyMo(namespace + '.' + portion).imported_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
-
-        mod_ref = PyMo(namespace + '.' + portion, project_path="any_path").imported_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
-
-        monkeypatch.syspath_prepend(os_path_dirname(str(tmp_path)))
-
-        mod_ref = PyMo(namespace + '.' + portion).imported_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
-
-        mod_ref = PyMo(namespace + '.' + portion, project_path=os.path.relpath(pkg_file, str(tmp_path))).imported_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
-
-    def test_imported_module_not_exists(self):
-        assert PyMo('not_existing_import_name').imported_module is None
-
-    def test_loaded_module_ae_system(self):
-        mod_ref = PyMo('ae.system').loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'DOTENV_FILENAME') == DOTENV_FILENAME
-
-    def test_loaded_module_built_ins(self):
-        assert isinstance(PyMo('os').loaded_module, ModuleType)
-        assert isinstance(PyMo('textwrap').loaded_module, ModuleType)
-
-    def test_loaded_module_local_module(self, monkeypatch, tmp_path):
-        module = "mod_2_tst"
-        # noinspection PyUnnecessaryCast
-        mod_file = cast(str, os.path.join(str(tmp_path), module + PY_EXT))
-        write_file(mod_file, "mod_var = 'mod_var_val'")
-
-        assert PyMo(module + PY_EXT).loaded_module is None
-
-        mod_ref = PyMo(module).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'mod_var') == 'mod_var_val'
-
-        mod_ref = PyMo(module, project_path=os_path_dirname(mod_file)).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'mod_var') == 'mod_var_val'
-
-        mod_ref = PyMo(os_path_basename(str(tmp_path)) + '.' + module,
-                       project_path=os_path_dirname(str(tmp_path))).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'mod_var') == 'mod_var_val'
-
-        mod_ref = PyMo(str(tmp_path) + '.' + module).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'mod_var') == 'mod_var_val'
-
-        monkeypatch.chdir(str(tmp_path))
-
-        mod_ref = PyMo(module, project_path=module + PY_EXT).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'mod_var') == 'mod_var_val'
-
-        mod_ref = PyMo(module).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'mod_var') == 'mod_var_val'
-
-    def test_loaded_module_local_package(self, monkeypatch, tmp_path):
-        namespace = "n_s"
-        portion = "por_2_tst"
-        pkg_root = os.path.join(str(tmp_path), namespace)
-        pkg_path = os.path.join(pkg_root, portion)
-        pkg_file = os.path.join(pkg_path, PY_INIT)
-        write_file(pkg_file, "pkg_var = 'pkg_var_val'", make_dirs=True)
-
-        assert PyMo(namespace + '.' + portion).loaded_module is None
-
-        assert PyMo(portion).loaded_module is None
-
-        mod_ref = PyMo(portion, project_path=pkg_root).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
-
-        mod_ref = PyMo(namespace + '.' + portion, project_path=os_path_dirname(pkg_root)).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
-
-        mod_ref = PyMo(str(tmp_path) + '.' + namespace + '.' + portion, project_path=pkg_root).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
-
-        mod_ref = PyMo(str(tmp_path) + '.' + namespace + '.' + portion).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
-
-        monkeypatch.chdir(str(tmp_path))
-
-        mod_ref = PyMo(namespace + '.' + portion).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
-
-        mod_ref = PyMo(namespace + '.' + portion, project_path=os.path.relpath(pkg_file, str(tmp_path))).loaded_module
-        assert isinstance(mod_ref, ModuleType)
-        assert getattr(mod_ref, 'pkg_var') == 'pkg_var_val'
-
-    def test_loaded_module_not_exists(self):
-        assert PyMo('not_existing_import_name').loaded_module is None
-
-    def test_module_file_path(self):
-        mod = PyMo("tst_nam")
-        assert mod.module_file_path == f"tst_nam{PY_EXT}"
-
-        mod = PyMo("tst_nam", project_path="prj_path")
-        assert mod.module_file_path == os_path_join("prj_path", "tst_nam" + PY_EXT)
-
-        mod = PyMo("tst.nam", project_path="prj_path")
-        assert mod.module_file_path == os_path_join("prj_path", "tst", "nam" + PY_EXT)
-
-    def test_namespace_guess_module_portion(self, tmp_path):
-        namespace = 'z_y'
-        portion_name = 'portion_name'
-        parent_dir = os_path_join(str(tmp_path), DEF_PROJECT_PARENT_FOLDER)
-        project_name = namespace + "_" + portion_name
-        project_path = os_path_join(parent_dir, project_name)
-        namespace_dir = os_path_join(project_path, namespace)
-        main_file = os_path_join(namespace_dir, portion_name + PY_EXT)
-        write_file(main_file, "# main file of module portion", make_dirs=True)
-
-        assert PyMo.from_path(project_path).namespace_name == namespace
-
-    def test_namespace_guess_package_portion(self, tmp_path):
-        namespace = 'x_y'
-        portion_name = 'portion_name'
-        parent_dir = os_path_join(str(tmp_path), DEF_PROJECT_PARENT_FOLDER)
-        project_name = namespace + "_" + portion_name
-        project_path = os_path_join(parent_dir, project_name)
-        namespace_dir = os_path_join(project_path, namespace)
-        portion_dir = os_path_join(namespace_dir, portion_name)
-        main_file = os_path_join(portion_dir, PY_INIT)
-        write_file(main_file, "# main file of package portion", make_dirs=True)
-
-        assert PyMo.from_path(project_path).namespace_name == namespace
-
-    def test_namespace_guess_project_at_cwd(self):
-        assert PyMo.from_path("").namespace_name == 'ae'
-        assert PyMo.from_path(os.getcwd()).namespace_name == 'ae'
-
-    def test_namespace_guess_root(self, tmp_path):
-        namespace = 'x_z'
-        parent_dir = os_path_join(tmp_path, DEF_PROJECT_PARENT_FOLDER)
-        project_path = os_path_join(parent_dir, namespace + "_" + namespace)
-        main_file = os_path_join(project_path, namespace + PY_EXT)
-        write_file(main_file, "# main file of non-namespace module", make_dirs=True)
-
-        assert not PyMo.from_path(project_path).namespace_name
-
-        os.remove(main_file)
-
-        main_file = os_path_join(project_path, 'main' + PY_EXT)
-        write_file(main_file, "# main file of non-namespace project")
-
-        assert PyMo.from_path(project_path).namespace_name == ""
-
-        os.remove(main_file)
-
-        main_file = os_path_join(project_path, PY_INIT)
-        write_file(main_file, "# main file of non-namespace package")
-
-        assert PyMo.from_path(project_path).namespace_name == ""
-
-        os.remove(main_file)
-
-        por_dir = os_path_join(project_path, namespace)
-        main_file = os_path_join(por_dir, namespace + PY_EXT)
-        write_file(main_file, "# main file of namespace root module", make_dirs=True)
-
-        assert PyMo.from_path(project_path).namespace_name == namespace
-
-        os.remove(main_file)
-
-        main_file = os_path_join(por_dir, 'main' + PY_EXT)
-        write_file(main_file, "# main file of namespace root main")
-
-        assert PyMo.from_path(project_path).namespace_name == namespace
-
-        os.remove(main_file)
-
-        por_dir = os_path_join(por_dir, namespace)   # == os_path_join(project_path, namespace, namespace)
-        main_file = os_path_join(por_dir, PY_INIT)
-        write_file(main_file, "# main file of namespace root package", make_dirs=True)
-
-        assert PyMo.from_path(project_path).namespace_name == namespace
-
-    def test_namespace_guess_sub_module(self):
-        assert PyMo.from_path(TESTS_FOLDER) is not None
-        assert PyMo.from_path(TESTS_FOLDER).namespace_name == ""
-
-    def test_namespace_guess_with_underscore(self, tmp_path):
-        namespace = 'n_x'
-        parent_dir = os_path_join(tmp_path, DEF_PROJECT_PARENT_FOLDER)
-        project_path = os_path_join(parent_dir, namespace + "_" + namespace)
-        por_dir = os_path_join(project_path, namespace, namespace)
-        write_file(os_path_join(por_dir, PY_INIT), "# main file of non-namespace module", make_dirs=True)
-
-        assert PyMo.from_path(project_path).namespace_name == namespace
-
-    def test_package_file_path(self):
-        mod = PyMo("tst_nam")
-        assert mod.package_file_path == f"tst_nam/{PY_INIT}"
-
-        mod = PyMo("tst_nam", project_path="prj_path")
-        assert mod.package_file_path == os_path_join("prj_path", "tst_nam", PY_INIT)
-
-        mod = PyMo("tst.nam", project_path="prj_path")
-        assert mod.package_file_path == os_path_join("prj_path", "tst", "nam", PY_INIT)
-
-    def test_pip_name(self):
-        mod = PyMo("tst_nam")
-        assert mod.pip_name == "tst-nam"
-
-        mod = PyMo("tst.nam")
-        assert mod.pip_name == "tst-nam"
-
-        mod = PyMo('PIL')
-        assert mod.pip_name == "pillow"
-
-        mod = PyMo("tst.nam", **{"tst.nam": "Irregular-Name"})
-        assert mod.project_name == "Irregular-Name"
-
-    def test_portion_name(self):
-        mod = PyMo("tst_nam")
-        assert mod.portion_name == "tst_nam"
-
-        mod = PyMo("tst.nam")
-        assert mod.portion_name == "nam"
-
-    def test_project_name(self):
-        mod = PyMo("tst_nam")
-        assert mod.project_name == "tst_nam"
-
-        mod = PyMo('PIL')
-        assert mod.project_name == "pillow"
-
-        mod = PyMo('PIL', **{'PIL': 'PIL'})
-        assert mod.project_name == "PIL"
-
-        mod = PyMo('PIL', PIL='PIL')
-        assert mod.project_name == "PIL"
-
-        mod = PyMo('PIL')       # test that the default value of PIL did not get overwritten
-        assert mod.project_name == "pillow"
-
-        mod = PyMo('namespace.mod', **{"namespace.mod": "Irr-Nam-Mod"})
-        assert mod.project_name == "Irr-Nam-Mod"
-
-    def test_pypi_names(self):
-        pypi_names = {'tst.pypi.nam': 'Irr-Name', 'PIP': 'New-Pip'}
-
-        mod = PyMo('tst.pypi.nam', **pypi_names)
-        assert mod.project_name == pypi_names['tst.pypi.nam']
-        assert mod.pip_name == pypi_names['tst.pypi.nam'].lower()
-
-        mod = PyMo('PIP', **pypi_names)
-        assert mod.project_name == pypi_names['PIP']
-        assert mod.pip_name == pypi_names['PIP'].lower()
-
-    def test_repr(self):
-        mod = PyMo("any_name")
-        assert repr(mod).startswith("PyMo('any_name'")
