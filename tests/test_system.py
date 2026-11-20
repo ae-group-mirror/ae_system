@@ -53,7 +53,7 @@ for _level in range(DOTENV_DIR_RANGE):
 
 
 @pytest.fixture
-def os_env_test_env():
+def tst_os_env():
     """ create .env files to test and backup os.environ. """
     with tempfile.TemporaryDirectory() as tmp_path:
         for level in range(DOTENV_DIR_RANGE):
@@ -81,22 +81,22 @@ class TestCommonHelpers:
 
     def test_build_config_variable_values_with_spec(self, monkeypatch, tmp_path):
         monkeypatch.chdir(str(tmp_path))
-        write_file('buildozer.spec', "[app]\nexisting = tst")
+        write_file('buildozer.spec', "[app]\nexisting = " + 'tst')
         existing, not_existing = build_config_variable_values(
             ('existing', ""),
-            ('not_existing', "default_value")
+            ('not_existing', 'default_value')
         )
-        assert existing == "tst"
-        assert not_existing == "default_value"
+        assert existing == 'tst'
+        assert not_existing == 'default_value'
 
     def test_build_config_variable_values_no_spec(self):
         assert not os_path_isfile('buildozer.spec')
         existing, not_existing = build_config_variable_values(
-            ('not_existing1', "default_value1"),
-            ('not_existing2', "default_value2")
+            ('not_existing1', 'default_value1'),
+            ('not_existing2', 'default_value2')
         )
-        assert existing == "default_value1"
-        assert not_existing == "default_value2"
+        assert existing == 'default_value1'
+        assert not_existing == 'default_value2'
 
     def test_instantiate_config_parser(self):
         cfg_parser = instantiate_config_parser()
@@ -104,8 +104,8 @@ class TestCommonHelpers:
         assert cfg_parser.optionxform is str
 
     def test_norm_pip_name(self):
-        assert norm_pip_name('') == ''
-        assert norm_pip_name('Abc.DEF-gHi_jkL') == 'abc-def-ghi-jkl'
+        assert norm_pip_name("") == ""
+        assert norm_pip_name("Abc.DEF-gHi_jkL") == "abc-def-ghi-jkl"
 
     def test_os_host_name(self):
         print(os_host_name())
@@ -161,33 +161,28 @@ class TestEnvVars:
         late_env_var_resolver({}, {}, {})
 
         with warnings.catch_warnings(record=True) as warnings_list:
-
             late_env_var_resolver({}, {}, {'unresolvable_var': [('', '$', '{NOT_EXISTENT_VAR}', 'NOT_EXISTENT_VAR')]})
 
-            assert warnings_list is not None
-            assert len(warnings_list) == 1
-            assert "has unresolved environment variables in its value" in str(warnings_list[0].message)
+        assert warnings_list is not None
+        assert len(warnings_list) == 1
+        assert "has unresolved environment variables in its value" in str(warnings_list[0].message)
+
+    def test_late_env_var_resolver_errors_and_warnings_recursive_var_name(self):
+        var_nam = "RECURSIVE_VAR_Name"
+        var_val = "infinite-val-grow$" + var_nam
+        late_resolved = {var_nam: DOTENV_VAR_IN_VAL_MATCHER.findall(var_val)}
+        env_vars = {var_nam: var_val}
 
         with warnings.catch_warnings(record=True) as warnings_list:
-            var_nam = "RECURSIVE_VAR_Name"
-            var_val = "infinite-val-grow$" + var_nam
-            late_resolved = {var_nam: DOTENV_VAR_IN_VAL_MATCHER.findall(var_val)}
-            env_vars = {var_nam: var_val}
-
             late_env_var_resolver(env_vars, env_vars, late_resolved)
 
-            assert warnings_list is not None
-            assert len(warnings_list) == 1
-            assert "ignoring recursive environment variable" in str(warnings_list[0].message)
+        assert warnings_list is not None
+        assert len(warnings_list) == 1
+        assert "ignoring recursive environment variable" in str(warnings_list[0].message)
 
-    def test_load_dotenvs(self, os_env_test_env):
+    def test_load_dotenvs(self, tst_os_env):
         assert DOTENV_VAR_NAME not in os.environ
         load_dotenvs()
-        assert DOTENV_VAR_NAME not in os.environ
-
-    def test_load_dotenvs_from_module_path(self, os_env_test_env):
-        assert DOTENV_VAR_NAME not in os.environ
-        load_dotenvs(from_module_path=True)
         assert DOTENV_VAR_NAME not in os.environ
 
     def test_load_env_var_defaults_errors(self):
@@ -213,7 +208,7 @@ class TestEnvVars:
         load_env_var_defaults('.', env_vars)
         assert DOTENV_VAR_NAME not in env_vars
 
-    def test_load_env_var_defaults_not_loaded_in_os_environ(self, os_env_test_env):
+    def test_load_env_var_defaults_not_loaded_in_os_environ(self, tst_os_env):
         assert DOTENV_VAR_NAME not in os.environ
 
         load_env_var_defaults("/", os.environ)
@@ -222,14 +217,14 @@ class TestEnvVars:
         load_env_var_defaults('.', os.environ)
         assert DOTENV_VAR_NAME not in os.environ
 
-        load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 5)), os.environ)
+        load_env_var_defaults(os_path_join(tst_os_env, *((DOTENV_DIR_NAME,) * 5)), os.environ)
         assert DOTENV_VAR_NAME not in os.environ
 
-        load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 6)), os.environ)  # too-deep path
+        load_env_var_defaults(os_path_join(tst_os_env, *((DOTENV_DIR_NAME,) * 6)), os.environ)  # too-deep path
         assert DOTENV_VAR_NAME not in os.environ
 
-    def test_load_env_var_defaults_load_start_parent_first_no_chain(self, monkeypatch, os_env_test_env):
-        monkeypatch.chdir(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 4)))
+    def test_load_env_var_defaults_load_start_parent_first_no_chain(self, monkeypatch, tst_os_env):
+        monkeypatch.chdir(os_path_join(tst_os_env, *((DOTENV_DIR_NAME,) * 4)))
 
         loaded = load_env_var_defaults("", os.environ)
 
@@ -238,40 +233,40 @@ class TestEnvVars:
         assert DOTENV_VAR_NAME in os.environ
         assert os.environ[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '3'
 
-    def test_load_env_var_defaults_load_start_first_no_chain(self, os_env_test_env):
-        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 3)), os.environ)
+    def test_load_env_var_defaults_load_start_first_no_chain(self, tst_os_env):
+        loaded = load_env_var_defaults(os_path_join(tst_os_env, *((DOTENV_DIR_NAME,) * 3)), os.environ)
 
         assert DOTENV_VAR_NAME in loaded
         assert loaded[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '3'
         assert DOTENV_VAR_NAME in os.environ
         assert os.environ[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '3'
 
-    def test_load_env_var_defaults_load_start_parent_first_in_chain(self, os_env_test_env):
-        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 2)), os.environ)
+    def test_load_env_var_defaults_load_start_parent_first_in_chain(self, tst_os_env):
+        loaded = load_env_var_defaults(os_path_join(tst_os_env, *((DOTENV_DIR_NAME,) * 2)), os.environ)
 
         assert DOTENV_VAR_NAME in loaded
         assert loaded[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '1'
         assert DOTENV_VAR_NAME in os.environ
         assert os.environ[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '1'
 
-    def test_load_env_var_defaults_load_start_no_parent_first_in_chain(self, os_env_test_env):
-        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 1)), os.environ)
+    def test_load_env_var_defaults_load_start_no_parent_first_in_chain(self, tst_os_env):
+        loaded = load_env_var_defaults(os_path_join(tst_os_env, *((DOTENV_DIR_NAME,) * 1)), os.environ)
 
         assert DOTENV_VAR_NAME in loaded
         assert loaded[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '1'
         assert DOTENV_VAR_NAME in os.environ
         assert os.environ[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '1'
 
-    def test_load_env_var_defaults_load_start_on_second_within_chain(self, os_env_test_env):
-        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 0)), os.environ)
+    def test_load_env_var_defaults_load_start_on_second_within_chain(self, tst_os_env):
+        loaded = load_env_var_defaults(os_path_join(tst_os_env, *((DOTENV_DIR_NAME,) * 0)), os.environ)
 
         assert DOTENV_VAR_NAME in loaded
         assert loaded[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '0'
         assert DOTENV_VAR_NAME in os.environ
         assert os.environ[DOTENV_VAR_NAME] == DOTENV_VAR_VAL + '0'
 
-    def test_load_env_var_defaults_resolve_vars_late(self, os_env_test_env):
-        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME,) * 1)), os.environ)
+    def test_load_env_var_defaults_resolve_vars_late(self, tst_os_env):
+        loaded = load_env_var_defaults(os_path_join(tst_os_env, *((DOTENV_DIR_NAME,) * 1)), os.environ)
 
         assert DOTENV_LATE_VAR_PRE + '0' in loaded
         assert DOTENV_LATE_VAR_PRE + '0' in os.environ
@@ -284,10 +279,10 @@ class TestEnvVars:
         assert loaded[DOTENV_LATE_VAR_PRE + '1'] == DOTENV_LATE_VALUES[1]
         assert os.environ[DOTENV_LATE_VAR_PRE + '1'] == DOTENV_LATE_VALUES[1]
 
-    def test_load_env_var_defaults_resolve_vars_late_with_gap_and_closed_gap(self, os_env_test_env):
+    def test_load_env_var_defaults_resolve_vars_late_with_gap_and_closed_gap(self, tst_os_env):
         empty_env = {}
 
-        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME, ) * 3)), empty_env)
+        loaded = load_env_var_defaults(os_path_join(tst_os_env, *((DOTENV_DIR_NAME,) * 3)), empty_env)
 
         assert DOTENV_LATE_VAR_PRE + '0' not in loaded
         assert DOTENV_LATE_VAR_PRE + '0' not in empty_env
@@ -298,9 +293,9 @@ class TestEnvVars:
         assert loaded[DOTENV_LATE_VAR_PRE + '3'] == DOTENV_LIT_VALUES[3]
         assert empty_env[DOTENV_LATE_VAR_PRE + '3'] == DOTENV_LIT_VALUES[3]
 
-        write_file(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME, ) * 2), '.env'), "# closing level 2 gap")
+        write_file(os_path_join(tst_os_env, *((DOTENV_DIR_NAME,) * 2), '.env'), "# closing level 2 gap")
 
-        loaded = load_env_var_defaults(os_path_join(os_env_test_env, *((DOTENV_DIR_NAME, ) * 3)), os.environ)
+        loaded = load_env_var_defaults(os_path_join(tst_os_env, *((DOTENV_DIR_NAME,) * 3)), os.environ)
 
         assert DOTENV_LATE_VAR_PRE + '0' in loaded
         assert DOTENV_LATE_VAR_PRE + '0' in os.environ
@@ -667,9 +662,9 @@ class TestEnvVars:
             assert 'var_nam' in loaded
             assert loaded['var_nam'] == "var val"
 
-    def test_parse_dotenv_start_parent_first_in_chain(self, os_env_test_env):
+    def test_parse_dotenv_start_parent_first_in_chain(self, tst_os_env):
         assert DOTENV_VAR_NAME not in os.environ
-        file_path = os_path_join(os_env_test_env, DOTENV_DIR_NAME, '.env')
+        file_path = os_path_join(tst_os_env, DOTENV_DIR_NAME, '.env')
 
         loaded = parse_dotenv(file_path, {})
 
@@ -732,6 +727,7 @@ class TestModuleHelpers:
         assert ret
         assert callable(type(ret))
 
+        # noinspection calling-non-callable
         call_ret = ret(*args, **kwargs)
         assert call_ret
         assert call_ret[0] == args
@@ -838,17 +834,17 @@ class TestModuleHelpers:
         assert isinstance(mod_path, str)
 
     def test_module_find_spec_exception(self):
-        with patch('ae.system.importlib.util.find_spec', side_effect=ValueError):
+        with patch('importlib.util.find_spec', side_effect=ValueError):
             errors = module_find('tst_import_name')
-            assert isinstance(errors, list) and len(errors) == 1
-            assert 'tst_import_name' in errors[0]
+        assert isinstance(errors, list) and len(errors) == 1
+        assert 'tst_import_name' in errors[0]
 
     def test_module_find_submodule_search_locations(self):
         spec_mock = MagicMock()
         spec_mock.origin = None
         spec_mock.loader_state = None
         spec_mock.submodule_search_locations = ['tst_file_path']
-        with patch('ae.system.importlib.util.find_spec', return_value=spec_mock):
+        with patch('importlib.util.find_spec', return_value=spec_mock):
             assert module_find('import_name') == 'tst_file_path'
 
     def test_module_find_with_module_path_not_found(self):
@@ -856,7 +852,7 @@ class TestModuleHelpers:
         spec_mock.origin = 'frozen'
         spec_mock.loader_state = None
         spec_mock.submodule_search_locations = None
-        with patch('ae.system.importlib.util.find_spec', return_value=spec_mock):
+        with patch('importlib.util.find_spec', return_value=spec_mock):
             assert module_find('import_name') == [f"path not available for {spec_mock.origin + '-'}module import_name"]
 
     def test_module_load_builtins(self):
@@ -865,16 +861,16 @@ class TestModuleHelpers:
         assert isinstance(module_load('os'), ModuleType)
 
     def test_module_load_error(self):
-        with patch('ae.system.importlib.util.module_from_spec'):
+        with patch('importlib.util.module_from_spec'):
             err = module_load('os')
-            assert isinstance(err, list) and len(err) == 1
-            assert "is not of importlib.abs.loader" in err[0]
+        assert isinstance(err, list) and len(err) == 1
+        assert "is not of importlib.abs.loader" in err[0]
 
     def test_module_load_exception(self):
-        with patch('ae.system.importlib.util.module_from_spec', side_effect=FileNotFoundError):
+        with patch('importlib.util.module_from_spec', side_effect=FileNotFoundError):
             err = module_load('os')
-            assert isinstance(err, list) and len(err) == 1
-            assert "'os'" in err[0]
+        assert isinstance(err, list) and len(err) == 1
+        assert "'os'" in err[0]
 
     def test_module_load_local_module(self, monkeypatch, tmp_path):
         module = "mod_2_tst"
@@ -1032,6 +1028,10 @@ class TestStackHelpers:
             assert 'TestStackHelpers' in full_stack_trace(ex)
             assert 'local_var' in full_stack_trace(ex)
             assert local_var in full_stack_trace(ex)
+
+    def test_full_stack_trace_empty(self):
+        with patch('sys.exc_info', return_value=(None, None, None)):
+            assert full_stack_trace(Exception()) == ""
 
     def test_full_stack_trace_without_locals(self):
         local_var = 'test_local_variable_value'

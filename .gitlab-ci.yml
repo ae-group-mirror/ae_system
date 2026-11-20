@@ -1,4 +1,4 @@
-# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.106
+# THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.project_tpls v0.3.109
 image: python:3.12
  
  
@@ -22,7 +22,7 @@ integrity:                      # run integrity tests
     - pip install --upgrade pip pipx setuptools
     - pip --version
     - >
-      pip install --upgrade --force-reinstall --uploaded-prior-to=P9D
+      pip install --upgrade --force-reinstall --uploaded-prior-to=P3D
       pyjnius
       anybadge
       flake8
