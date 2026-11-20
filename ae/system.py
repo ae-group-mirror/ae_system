@@ -1,90 +1,8 @@
 """
-Python system helpers
-=====================
+OS and Python system helpers api
+================================
 
-the ae.system portion provides base helpers for the Python and OS systems environments.
-
-.. note::
-    on import, this module checks if it is running on the Android OS. if so, it will monkey patch the
-    :mod:`shutil` module to ensure functions like ``copy`` and ``move`` work correctly. to prevent
-    permission-related errors, this module should be one of the first imports in your Android app's main module.
-
-
-operating system info helpers
------------------------------
-
-useful helper functions to inspect the operating system:
-
-* :data:`os_platform`: a string identifying the operating system (e.g., 'linux', 'win32', 'android', 'ios').
-* :data:`os_device_id`: a string with the ID/name of the device.
-* :func:`os_host_name`: determines the operating system's host/machine name.
-* :func:`os_local_ip`: determines the local IP address of the machine.
-* :func:`os_user_name`: determines the current logged-in user's name.
-
-
-manage OS environment variables & ``.env`` files
-------------------------------------------------
-
-* :func:`parse_dotenv`: parses a ``.env`` file and returns its key-value pairs as a dictionary.
-* :func:`late_env_var_resolver`: substitutes environment variables within the value of other environment variables.
-* :func:`load_dotenvs`: detects and loads all relevant ``.env`` files from the current working directory and optional
-  also from the main module's path.
-* :func:`load_env_var_defaults`: recursively searches parent directories for ``.env`` files and loads any undeclared
-  variables.
-* :func:`sys_env_dict`: returns a dictionary containing the most important Python runtime OS environment values.
-* :func:`sys_env_text`: compiles a formatted text block with system environment information, useful for logging.
-
-
-Python virtual environment helpers
-----------------------------------
-
-Python virtual environment core helpers working for standard virtual environments (venv, virtualenv, inclusive
-local .venv-folders), for pyenv, Miniconda, Conda and for tools like Poetry, Pipenv and uv.
-
-* :func:`os_env_venv`: determines the id/name of the currently Python virtual environment (VENV) set in the OS env vars.
-* :func:`venv_prefix`: determine the folder path of the prefix/root name of the currently set VENV in the OS env vars.
-
-.. hint:: more helpers related to Python virtual environments are provided by the module :mod:`aedev.commands`.
-
-
-application & project helpers
------------------------------
-
-functions to aid in application setup, configuration, and build introspection.
-
-* :func:`app_name_guess`: attempts to determine the name of the currently running application from its environment.
-* :func:`build_config_variable_values`: reads variable values from a 'buildozer.spec' file.
-* :func:`instantiate_config_parser`: returns a `ConfigParser` instance pre-configured for case-sensitive keys and
-  extended interpolation.
-
-
-modules and call stack inspection
----------------------------------
-
-dynamically inspect modules, execution frames, and variables on the call stack.
-
-* :func:`module_attr`: dynamically gets a reference to a module or any attribute (variable, function, class) within it.
-* :func:`module_file_path`: determines the absolute file path of the module from which it is called.
-* :func:`module_find`: determine the file path of a Python module.
-* :func:`module_load`: search, import and execute a Python module dynamically without adding it to sys.modules.
-* :func:`stack_frames`: a generator that yields frames from the call stack, starting at a specified depth.
-* :func:`stack_var`: finds the value of a specific variable by searching up the call stack.
-* :func:`stack_vars`: returns the global and local variables from a specific frame in the call stack.
-* :func:`full_stack_trace`: generates a complete, detailed stack trace including local variables from an exception.
-
-.. hint::
-    the :class:`ae.core.AppBase` class uses these helper functions to determine the
-    :attr:`version <ae.core.AppBase.app_version>` and :attr:`title <ae.core.AppBase.app_title>` of an application,
-    if these values are not specified in the instance initializer.
-
-
-system constants and classes
-----------------------------
-
-* :data:`DOTENV_LINE_MATCHER`: compiled regular expression to parse a line of an OS environment file.
-* :data:`DOTENV_VAR_IN_VAL_MATCHER`: compiled regular expression to parse the value of an OS env variable.
-* :data:`SKIPPED_MODULES`: a tuple of module names to be ignored by stack inspection functions.
-
+see :ref:`OS and Python system helpers` for more infos and examples.
 """
 import getpass
 import importlib
@@ -103,18 +21,18 @@ from collections.abc import Callable, Container, Generator, MutableMapping
 from configparser import ConfigParser, ExtendedInterpolation
 from importlib.machinery import ModuleSpec
 from inspect import getinnerframes, getouterframes, getsourcefile
-from types import ModuleType
-from typing import Any, cast
+from types import ModuleType, TracebackType
+from typing import Any
 
 from ae.base import (                                               # type: ignore
     UNSET,
     defuse, dummy_function, env_str, mask_secrets, norm_path,
-    os_path_abspath, os_path_basename, os_path_dirname, os_path_isfile, os_path_join, os_path_splitext,
+    os_path_basename, os_path_dirname, os_path_isfile, os_path_join, os_path_splitext,
     pep8_format, read_file,
     UnsetType)
 
 
-__version__ = '0.3.21'
+__version__ = '0.4.21'
 
 
 DOTENV_LINE_MATCHER = re.compile(r"""
@@ -147,23 +65,26 @@ DOTENV_VAR_IN_VAL_MATCHER = re.compile(r"""
 <https://www.gnu.org/software/bash/manual/bash.html#Shell-Parameter-Expansion-1>) """
 
 SKIPPED_MODULES = (
-    'ae.base', 'ae.app_log', 'ae.dynamicod', 'ae.system', 'ae.deep', 'ae.django_utils', 'ae.notify', 'ae.valid',
-    'ae.files', 'ae.paths', 'ae.i18n', 'ae.cloud_storage', 'ae.oaio_model', 'ae.oaio_client', 'ae.updater',
-    'ae.core', 'ae.literal', 'ae.config', 'ae.console', 'ae.shell', 'ae.managed_files', 'ae.pythonanywhere',
-    'ae.lockname', 'ae.progress', 'ae.sys_core', 'ae.sys_data', 'ae.sys_core_sh', 'ae.sys_data_sh',
-    'ae.db_core', 'ae.db_ora', 'ae.db_pg', 'ae.transfer_service', 'ae.sideloading_server',
-    'ae.gui', 'ae.gui.app', 'ae.gui.tours', 'ae.gui.utils',
-    'ae.kivy_glsl', 'ae.kivy_dyn_chi', 'ae.kivy_relief_canvas',
+    'ae.base', 'ae.app_log', 'ae.cloud_storage', 'ae.config', 'ae.console', 'ae.core',
+    # 'ae.dabo_app',
+    'ae.db_core', 'ae.db_ora', 'ae.db_pg', 'ae.deep', 'ae.django_utils', 'ae.dynamicod',
+    'ae.enaml_app', 'ae.files', 'ae.gui', 'ae.gui.app', 'ae.gui.tours', 'ae.gui.utils',
+    'ae.i18n', 'importlib._bootstrap', 'importlib._bootstrap_external',
     'ae.kivy', 'ae.kivy.apps', 'ae.kivy.behaviors', 'ae.kivy.i18n', 'ae.kivy.tours', 'ae.kivy.widgets',
-    'ae.kivy_auto_width', 'ae.kivy_file_chooser', 'ae.kivy_iterable_displayer', 'ae.kivy_qr_displayer',
-    'ae.kivy_sideloading', 'ae.kivy_user_prefs', 'ae.lisz_app_data',
-    'ae.enaml_app', 'ae.toga_app', 'ae.pyglet_app', 'ae.pygobject_app', 'ae.dabo_app', 'ae.qpython_app',
-    'importlib._bootstrap', 'importlib._bootstrap_external')
+    'ae.kivy_auto_width', 'ae.kivy_dyn_chi', 'ae.kivy_file_chooser', 'ae.kivy_glsl', 'ae.kivy_iterable_displayer',
+    'ae.kivy_qr_displayer', 'ae.kivy_relief_canvas', 'ae.kivy_sideloading', 'ae.kivy_user_prefs',
+    'ae.lisz_app_data', 'ae.literal', 'ae.lockname', 'ae.managed_files', 'ae.notify',
+    'ae.oaio_client', 'ae.oaio_model', 'ae.paths', 'ae.progress',
+    # 'ae.pyglet_app', 'ae.pygobject_app',
+    'ae.pythonanywhere',
+    # 'ae.qpython_app',
+    'ae.shell', 'ae.sideloading_server', 'ae.system', 'ae.toga_app', 'ae.transfer_service', 'ae.updater',
+    )
 """ skipped modules used as default by :func:`stack_var` and :func:`stack_vars` """
 
 
-EnvVarsType = MutableMapping[str, str]               #: environment variables dict/mapping
-EnvVarsLateResolvedType = dict[str, list[tuple[str, str, str, str]]]     #: mapping of DOTENV_VAR_IN_VAL_MATCHER results
+EnvVarsType = MutableMapping[str, str]                              #: environment variables dict/mapping
+EnvVarsLateResolvedType = dict[str, list[tuple[str, str, str, str]]]  #: mapping of DOTENV_VAR_IN_VAL_MATCHER results
 
 
 def app_name_guess() -> str:
@@ -207,29 +128,35 @@ def full_stack_trace(ex: Exception, frames_with_locals: int = 3) -> str:
 
     :param ex:                  exception instance.
     :param frames_with_locals:  number of the deepest frames to show also the local variables for.
-    :return:                    text block string (formatted by os.linesep) with stack trace info.
+    :return:                    text block string (formatted by :data:`os.linesep`) with stack trace info
+                                or an empty string if no traceback is available.
     """
-    ret = f"Exception {ex!r}. Full traceback (last {frames_with_locals} frames with locals):" + os.linesep
-    trace_back = sys.exc_info()[2]
-    if trace_back:
-        def ext_ret(frame_info: inspect.FrameInfo):
-            """ process traceback frame and add as str to ret """
-            nonlocal ret
-            ret += f'File "{frame_info[1]}", line {frame_info[2]}, in {frame_info[3]}' + os.linesep
-            lines = frame_info[4]  # mypy does not detect item[]
-            if lines:
-                for line in lines:
-                    ret += ' ' * 4 + line.lstrip()
+    # noinspection bad-assignment
+    trace_back: TracebackType | None = sys.exc_info()[2]
+    if trace_back is None:
+        return ""
 
-        all_frames = list(reversed(getouterframes(trace_back.tb_frame)[1:])) + getinnerframes(trace_back)
-        first_locals_idx = len(all_frames) - frames_with_locals
-        for idx, info in enumerate(all_frames):
-            ext_ret(info)
-            if idx >= first_locals_idx:
-                for nam, val in info.frame.f_locals.items():
-                    val = pep8_format(val, indent_level=2, debug_mode=True)
-                    # noinspection PyStringConversionWithoutDunderMethod
-                    ret += ' ' * 6 + f"= {nam}: {type(val)} = {val}" + os.linesep
+    sep = os.linesep
+    ret = f"Exception {ex!r}. Full traceback (last {frames_with_locals} frames with locals):" + sep
+
+    def ext_ret(frame_info: inspect.FrameInfo):
+        """ process traceback frame and add as str to ret """
+        nonlocal ret
+        ret += f'File "{frame_info[1]}", line {frame_info[2]}, in {frame_info[3]}' + sep
+        lines = frame_info[4]  # mypy does not detect item[]
+        if lines:
+            for line in lines:
+                ret += ' ' * 4 + line.lstrip()
+
+    all_frames = list(reversed(getouterframes(trace_back.tb_frame)[1:])) + getinnerframes(trace_back)
+    first_locals_idx = len(all_frames) - frames_with_locals
+    for idx, info in enumerate(all_frames):
+        ext_ret(info)
+        if idx >= first_locals_idx:
+            for nam, val in info.frame.f_locals.items():
+                val = pep8_format(val, indent_level=2, debug_mode=True)
+                # noinspection PyStringConversionWithoutDunderMethod
+                ret += ' ' * 6 + f"= {nam}: {type(val)} = {val}" + sep
 
     return ret
 
@@ -271,15 +198,15 @@ def late_env_var_resolver(env_vars: EnvVarsType, loaded_vars: EnvVarsType, late_
                 if any(_[-1] == var_nam for _ in replacement_matches):
                     warnings.warn(f"   ## ignoring recursive environment variable {var_nam} ({var_val=})")
                     replacement_matches = [_ for _ in replacement_matches if _[-1] != var_nam]
-                matches.extend(replacement_matches)     # extend matches with env vars in replaced var value
+                matches.extend(replacement_matches)                 # extend matches with env vars in replaced var value
                 return len(replacement_matches)
         return 0
 
-    retries = len(late_resolved)                        # retry if later-/not-yet-replaced env var in env var value
+    retries = len(late_resolved)                                    # retry if later-/not-yet-replaced env var in value
     while late_resolved and retries:
         for var_nam, matches in late_resolved.copy().items():
             # substitute declared and not escaped env variables found via :data:`DOTENV_VAR_IN_VAL_MATCHER` in a value
-            for evn_groups in matches.copy():           # try to replace env vars with its values, removed from matches
+            for evn_groups in matches.copy():
                 retries += _update_matches_retries()
             if not matches:
                 late_resolved.pop(var_nam)
@@ -291,27 +218,9 @@ def late_env_var_resolver(env_vars: EnvVarsType, loaded_vars: EnvVarsType, late_
                       f" loaded_vars['{var_nam}']={loaded_vars.get(var_nam, 'not in dict')}")
 
 
-def load_dotenvs(from_module_path: bool = False):
-    """ detect and load not defined OS environment variables from ``.env`` files.
-
-    :param from_module_path:    pass True to load OS environment variables (that are not already loaded from ``.env``
-                                files situated in or above the current working directory) also from/above the folder of
-                                the first module in the call stack that gets not excluded/skipped by :func:`stack_var`.
-
-                                in order to also load ``.env`` files in/above the project folder.
-                                call this function from the main module of project/app.
-
-    .. note::
-        only variables that are not already defined in the OS environment variables mapping :attr:`os.environ` will be
-        loaded/added. variables will be loaded first from the first ``.env`` file found in or above the current working
-        directory, while the variable values in the deeper situated files are overwriting the values defined in the
-        ``.env`` files situated in the above folders.
-    """
-    env_vars = os.environ
-    load_env_var_defaults(os.getcwd(), env_vars)
-
-    if from_module_path and (file_name := stack_var('__file__')):
-        load_env_var_defaults(os_path_dirname(os_path_abspath(cast(str, file_name))), env_vars)
+def load_dotenvs():
+    """ load undefined OS environment variables from ``.env`` files in the current working directory or above. """
+    load_env_var_defaults(os.getcwd(), os.environ)
 
 
 def load_env_var_defaults(start_dir: str, env_vars: EnvVarsType) -> EnvVarsType:
@@ -321,8 +230,8 @@ def load_env_var_defaults(start_dir: str, env_vars: EnvVarsType) -> EnvVarsType:
                                 folder. if an ``.env `` file got found, then put their shell environment variable values
                                 into the  specified :paramref:`.env_vars` mapping if they are not
                                 already there. after processing the first ``.env`` file, it repeats to check for
-                                further ``.env`` files in the parent folder to load them too, until either detecting
-                                a folder without an ``.env`` file or until an ``.env`` got loaded from the root folder.
+                                further ``.env`` files in the parent folder to load them too, until it reaches either
+                                the file system root or the first parent folder without any ``.env`` file.
     :param env_vars:            environment variables mapping to be amended with env variable values from any
                                 found ``.env`` file. pass Python's :attr:`os.environ` to amend this mapping directly
                                 with all the already not declared environment variables.
@@ -349,16 +258,13 @@ def load_env_var_defaults(start_dir: str, env_vars: EnvVarsType) -> EnvVarsType:
 
 
 def module_attr(import_name: str, attr_name: str) -> Any | UnsetType | None:
-    """ determine dynamically a reference to any attribute (variable/func/class) declared in a module.
+    """ determine any attribute (variable/func/class) declared in a module, w/o adding it to :attr:`sys.modules`.
 
     :param import_name:         import-/dot-name of the distribution/module/package to load/import.
     :param attr_name:           name of the attribute declared within the module.
     :return:                    module attribute value,
-                                or None if the module got not found
-                                or UNSET if the module attribute doesn't exist.
-
-    .. note:: a previously not imported module will *not* be added to `sys.modules` by this function.
-
+                                or `None` if the module got not found
+                                or :data:`~ae.base.UNSET` if the module attribute doesn't exist.
     """
     mod_ref = sys.modules.get(import_name, None) or module_load(import_name)
     return getattr(mod_ref, attr_name, UNSET) if isinstance(mod_ref, ModuleType) else None
@@ -381,7 +287,6 @@ def module_file_path(local_object: Callable | None = None) -> str:
     file_path = stack_var('__file__')
     if not file_path:
         try:
-            # noinspection PyProtectedMember
             file_path = sys._getframe().f_back.f_code.co_filename   # type: ignore # pylint: disable=protected-access
         except (AttributeError, Exception):                         # pylint: disable=broad-except
             file_path = ""
@@ -420,14 +325,14 @@ def module_load(import_name: str, path: str | UnsetType | None = UNSET) -> Modul
 
     :param import_name:         dot-name of the module to import.
     :param path:                optional file path of the module to import. if this arg is not specified or has the
-                                default value (:data:`UNSET`), then the path will be determined from the current working
-                                directory and the import name. specify ``None`` to prevent the module search.
+                                value (:data:`~ae.base.UNSET`), then the path will be determined from the current
+                                working directory and the import name. specify `None` to prevent a module path search.
     :return:                    a reference to the module if the module could be loaded, else a list of error strings.
     """
     errors: list[str] = []
 
     if path is UNSET:
-        path_parts = cast(str, os_path_join(*import_name.split('.')))
+        path_parts = os_path_join(*import_name.split('.'))
         if (os_path_isfile(path := path_parts + '.py') or
                 os_path_isfile(path := os_path_join(path_parts, '__init__' + '.py'))):
             path = norm_path(path)
@@ -465,17 +370,6 @@ def os_env_venv() -> str:
 
     :return:                    the name/id of the currently set VENV in the OS env vars (:attr:`os.environ`)
                                 or an empty string if no VENV is set in the OS environment variables.
-
-                                .. note::
-                                    this function is only checking the OS env vars and is not using :attr:`sys.prefix`
-                                    or the expression ``sys.prefix == sys.base_prefix`` to determine if a VENV got set.
-
-                                .. hint::
-                                    if the Conda `base` VENV got set in the OS env vars, then the basename of the env
-                                    var 'CONDA_PREFIX' ('anaconda3' or 'miniconda3') will be returned as VENV id. the
-                                    env var `CONDA_DEFAULT_ENV` has in this case set the value 'base', and the path in
-                                    :data:`sys.prefix` could be different to the value of 'CONDA_PREFIX' if the
-                                    `base` VENV got only set within the OS environment variables.
     """
     path = venv_prefix()
     return os_path_basename(path) if path else ""
@@ -491,8 +385,6 @@ def os_host_name() -> str:
 
 def os_local_ip() -> str:
     """ determine ip address of this system/machine in the local network (LAN or WLAN).
-
-    inspired by answers of SO users @dml and @fatal_error to the question: https://stackoverflow.com/questions/166506.
 
     :return:                    ip address of this machine in the local network (WLAN or LAN/ethernet)
                                 or empty string if this machine is not connected to any network.
@@ -522,8 +414,8 @@ def os_local_ip() -> str:
 def _os_platform() -> str:
     """ determine the operating system where this code is running (used to initialize the :data:`os_platform` variable).
 
-    :return:                    operating system (extension) as string. extending Python's :func:`sys.platform`
-                                for mobile platforms like Android and iOS:
+    :return:                    operating system (extension) as string. extending Python's :attr:`sys.platform`
+                                attribute for mobile platforms like Android and iOS:
 
                                 * `'android'` for all Android systems.
                                 * `'cygwin'` for MS Windows with an installed Cygwin extension.
@@ -539,31 +431,13 @@ def _os_platform() -> str:
     return env_str('KIVY_BUILD') or sys.platform    # KIVY_BUILD == 'android' / 'ios' on Android/iOS
 
 
-os_platform = _os_platform()
-""" operating system / platform string (see :func:`_os_platform`).
-
-this string value gets determined for most of the operating systems with the help of Python's :func:`sys.platform`
-function and additionally detects the operating systems iOS and Android (currently not fully supported by Python).
-"""
-
-
-os_device_id = os_host_name()
-""" user-definable id/name of the device, defaults to os_host_name() on most platforms, alternatives are:
-
-on Android (check with adb shell 'settings get global device_name' and adb shell 'settings list global'):
-    - Settings.Global.DEVICE_NAME (Settings.Global.getString(context.getContentResolver(), "device_name"))
-    - android.os.Build.DEVICE/.MANUFACTURER/.BRAND/.HOST
-    - DeviceName.getDeviceName()
-on MS Windows:
-    - os.environ['COMPUTERNAME']
-on all other platforms:
-    - socket.gethostname()
-"""
+os_device_id = os_host_name()   #: user-definable id/name of the device, defaults to os_host_name() on most platforms
+os_platform = _os_platform()    #: operating system / platform id string (see :func:`_os_platform`)
 if os_platform == 'android':
     # determine Android device id because os_host_name() returns mostly 'localhost' and not the user-definable device id
     from jnius import autoclass                                     # type: ignore
 
-    # noinspection PyBroadException
+    # noinspection broad-exception
     try:
         Settings = autoclass('android.provider.Settings$Global')
         PythonActivity = autoclass('org.kivy.android.PythonActivity')
@@ -579,8 +453,8 @@ if os_platform == 'android':
     except Exception:                                               # pylint: disable=broad-except
         pass
 
-    # monkey patches the :func:`shutil.copystat` and :func:`shutil.copymode` helper functions, which are crashing on
-    # 'android' (see # `<https://bugs.python.org/issue28141>`__ and `<https://bugs.python.org/issue32073>`__). these
+    # monkey patches the functions :func:`shutil.copystat` and :func:`shutil.copymode`, which are crashing on
+    # 'android' (see also https://bugs.python.org/issue28141 and https://bugs.python.org/issue32073). these
     # functions are used by shutil.copy2/copy/copytree/move to copy OS-specific file attributes.
     # although shutil.copytree() and shutil.move() are copying/moving the files correctly when the copy_function
     # arg is set to :func:`shutil.copyfile`, they will finally also crash afterward when they try to set the attributes
@@ -660,7 +534,6 @@ def stack_frames(depth: int = 1) -> Generator:  # Generator[frame, None, None]
     try:
         while True:
             depth += 1
-            # noinspection PyProtectedMember
             yield sys._getframe(depth)          # pylint: disable=protected-access
     except (TypeError, AttributeError, ValueError):
         pass
@@ -677,8 +550,8 @@ def stack_var(name: str, *skip_modules: str, scope: str = '', depth: int = 1) ->
     :param depth:               the calling level from which on to search. the default value (1) refers to the next
                                 deeper stack frame, which is the caller of the function. pass 2 or an even higher
                                 value if you want to start the variable search from a deeper level in the call stack.
-    :return:                    the variable value of a deeper level within the call stack or UNSET if the variable was
-                                not found.
+    :return:                    the variable value of a deeper level within the call stack
+                                or :data:`~ae.base.UNSET` if the variable was not found.
     """
     glo, loc, _deep = stack_vars(*skip_modules, find_name=name, min_depth=depth + 1, scope=scope)
     variables = glo if name in glo and scope != 'locals' else loc
@@ -732,8 +605,6 @@ def sys_env_dict() -> dict[str, Any]:
 
     :return:                    python system run-time environment values like python_ver, argv, cwd, executable,
                                 frozen and bundle_dir (if bundled with pyinstaller).
-
-    .. hint:: see also https://pyinstaller.readthedocs.io/en/stable/runtime-information.html
     """
     sed: dict[str, Any] = {
         'python ver': sys.version_info,

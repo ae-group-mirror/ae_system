@@ -1,16 +1,16 @@
 <!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project ae.ae v0.3.110 -->
 <!-- THIS FILE IS EXCLUSIVELY MAINTAINED by the project aedev.namespace_root_tpls v0.3.33 -->
-# system 0.3.21
+# system 0.4.21
 
 [![GitLab develop](https://img.shields.io/gitlab/pipeline/ae-group/ae_system/develop?logo=python)](
     https://gitlab.com/ae-group/ae_system)
 [![LatestPyPIrelease](
-    https://img.shields.io/gitlab/pipeline/ae-group/ae_system/release0.3.21?logo=python)](
-    https://gitlab.com/ae-group/ae_system/-/tree/release0.3.21)
+    https://img.shields.io/gitlab/pipeline/ae-group/ae_system/release0.4.21?logo=python)](
+    https://gitlab.com/ae-group/ae_system/-/tree/release0.4.21)
 [![PyPIVersions](https://img.shields.io/pypi/v/ae_system)](
     https://pypi.org/project/ae-system/#history)
 
->ae namespace module portion system: Python system helpers.
+>ae namespace module portion system: OS and Python system helpers api.
 
 [![Coverage](https://ae-group.gitlab.io/ae_system/coverage.svg)](
     https://ae-group.gitlab.io/ae_system/coverage/index.html)
